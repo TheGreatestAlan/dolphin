@@ -7,6 +7,7 @@ import requests
 import os
 import time
 
+
 class AudioRecorder:
     def __init__(self, fs=16000, duration=5, output_directory="M:/model_cache/",
                  server_url="http://localhost:5000/transcribe"):
@@ -53,6 +54,7 @@ class AudioRecorder:
         record_button = tk.Button(self.root, text="Press to Record", command=self.start_recording)
         record_button.pack(pady=20)
         self.root.mainloop()
+
 
 if __name__ == "__main__":
     recorder = AudioRecorder()
