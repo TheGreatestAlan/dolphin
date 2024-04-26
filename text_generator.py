@@ -1,12 +1,22 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer
+#from transformers import LlamaForCausalLM, LlamaTokenizer
+
 model_path = "M:\\workspace\\dolphin\\dolphin-2.5-mixtral-8x7b-GPTQ"
+#model_path = "cfahlgren1/natural-functions"  # Use the Hugging Face model identifier
+#model_path = "meta-llama/Meta-Llama-3-8B-Instruct"
+cache_directory =  "M:\\workspace\\dolphin"
 
 class TextGenerator:
     def __init__(self):
         self.model = AutoModelForCausalLM.from_pretrained(model_path,
+                                                          token='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',
                                                           device_map="auto",
-                                                          trust_remote_code=False).to('cuda')
-        self.tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
+                                                          trust_remote_code=False,
+                                                          cache_dir=cache_directory).to('cuda')
+        self.tokenizer = AutoTokenizer.from_pretrained(model_path,
+                                                       use_fast=True,
+                                                       cache_dir=cache_directory)
+
         self.conversations = {}
 
     def generate_response(self, conversation_id, prompt, system_message):
