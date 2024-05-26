@@ -1,2 +1,5 @@
 dolphin-2.5-mixtral-8x7b-GPTQ/
 .idea/
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
