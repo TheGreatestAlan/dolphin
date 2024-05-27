@@ -1,5 +1,6 @@
 import json
 
+from InventoryMapper import InventoryMapper
 from flask import Flask, request, jsonify
 import time
 import os
@@ -8,7 +9,10 @@ from werkzeug.utils import secure_filename
 import LLMImplementations
 from AudioTranscriber import AudioTranscriber
 from GeneratorType import GeneratorType
+from InventoryRestClient import InventoryClient
+from functiongenerator.InventoryFunctionGenerator import InventoryFunctionGenerator
 import uuid
+
 
 app = Flask(__name__)
 app.logger.setLevel("INFO")
@@ -32,9 +36,15 @@ def create_text_generator():
 
 
 text_generator = create_text_generator()
-#audio_transcriber = AudioTranscriber()
+# audio_transcriber = AudioTranscriber()
 audio_transcriber = None
+inventory_function_generator = InventoryFunctionGenerator(text_generator)
 
+# Initialize the InventoryClient
+base_url = "http://localhost:8080"  # Replace with your actual base URL
+inventory_client = InventoryClient(base_url)
+
+inventory_mapper = InventoryMapper(inventory_client, inventory_function_generator)
 
 @app.route('/match_items', methods=['POST'])
 def match_items():
@@ -48,12 +58,12 @@ def match_items():
             "You are chatGPT-4, a well-trained LLM used to assist humans. "
             "You must respond only with a valid JSON object. Do not include any other text or explanation in your response. "
             "Here are some examples of how you should respond:\n\n"
-            "1. If asked 'add a hammer to drawer 5', respond with:\n"
-            "{\"action\": \"add_inventory\", \"parameters\": {\"drawer_number\": 5, \"items_to_add\": [\"hammer\"]}}\n"
-            "2. If asked 'remove a screwdriver from drawer 10', respond with:\n"
-            "{\"action\": \"delete_inventory\", \"parameters\": {\"drawer_number\": 10, \"items_to_delete\": [\"screwdriver\"]}}\n"
-            "3. If asked 'add two pencils to drawer 3', respond with:\n"
-            "{\"action\": \"add_inventory\", \"parameters\": {\"drawer_number\": 3, \"items_to_add\": [\"pencil\", \"pencil\"]}}\n\n"
+            "1. If asked 'add a hammer to container 5', respond with:\n"
+            "{\"action\": \"add_inventory\", \"parameters\": {\"container_number\": 5, \"items_to_add\": [\"hammer\"]}}\n"
+            "2. If asked 'remove a screwdriver from container 10', respond with:\n"
+            "{\"action\": \"delete_inventory\", \"parameters\": {\"container_number\": 10, \"items_to_delete\": [\"screwdriver\"]}}\n"
+            "3. If asked 'add two pencils to container 3', respond with:\n"
+            "{\"action\": \"add_inventory\", \"parameters\": {\"container_number\": 3, \"items_to_add\": [\"pencil\", \"pencil\"]}}\n\n"
             "Remember, respond with only the JSON object."
         )
 
@@ -69,40 +79,15 @@ def match_items():
 
 @app.route('/inventory_function', methods=['POST'])
 def inventory_function():
-    # Define the default system_message
-    default_system_message = (
-        "You are chatGPT-4, a well-trained LLM used to assist humans. "
-        "You must respond only with a valid JSON object. Do not include any other text or explanation in your response. "
-        "Here are some examples of how you should respond:\n\n"
-        "1. If asked 'add a hammer to drawer 5', respond with:\n"
-        "{\"action\": \"add_inventory\", \"parameters\": {\"drawer_number\": 5, \"items_to_add\": [\"hammer\"]}}\n"
-        "2. If asked 'remove a screwdriver from drawer 10', respond with:\n"
-        "{\"action\": \"delete_inventory\", \"parameters\": {\"drawer_number\": 10, \"items_to_delete\": [\"screwdriver\"]}}\n"
-        "3. If asked 'add two pencils to drawer 3', respond with:\n"
-        "{\"action\": \"add_inventory\", \"parameters\": {\"drawer_number\": 3, \"items_to_add\": [\"pencil\", \"pencil\"]}}\n\n"
-        "Respond only with the JSON object, without any additional text."
-    )
-
-    start_time = time.time()
     try:
         conversation_id = request.json.get('conversation_id', str(uuid.uuid4()))
         prompt = request.json.get('prompt', '')
-        # Use the provided system_message or the default if none provided
-        system_message = request.json.get('system_message', default_system_message)
+        system_message = request.json.get('system_message', None)
 
-        # Assuming text_generator is a previously initialized instance capable of handling generate_response
-        conversation_id, latest_response = text_generator.generate_response(conversation_id, prompt, system_message)
+        conversation_id, json_response, elapsed_time = inventory_function_generator.generate_response(conversation_id,
+                                                                                                      prompt,
+                                                                                                      system_message)
 
-        # Extract JSON part from the response
-        try:
-            # Find the first '{' and last '}' to extract JSON
-            json_start = latest_response.find('{')
-            json_end = latest_response.rfind('}') + 1
-            json_response = json.loads(latest_response[json_start:json_end])
-        except (json.JSONDecodeError, ValueError):
-            raise Exception("The response is not valid JSON")
-
-        elapsed_time = time.time() - start_time
         return jsonify(
             {'conversation_id': conversation_id, 'response': json_response, 'processing_time': elapsed_time})
     except Exception as e:
@@ -151,8 +136,8 @@ def transcribe_audio():
         1.Prompt: Audio Transcription ::: Hullo Hullo how are you doing
         Response: <Cleaned_Transcription>Hello Hello how are you doing</Cleaned_Transcription>
 
-        2.Prompt: Audio Transcription ::: Place Pika che and drawer one!
-        Response: <Cleaned_Transcription>Place Pikachu in drawer one!</Cleaned_Transcription>
+        2.Prompt: Audio Transcription ::: Place Pika che and container one!
+        Response: <Cleaned_Transcription>Place Pikachu in container one!</Cleaned_Transcription>
 
         3.Prompt: Audio Transcription ::: Wur ganna be late for the meeting!
         Response: <Cleaned_Transcription>We're going to be late for the meeting!</Cleaned_Transcription>
@@ -161,12 +146,23 @@ def transcribe_audio():
         Response: <Cleaned_Transcription>It's raining cats and dogs out there, isn't it</Cleaned_Transcription>
 
         4.Prompt: Audio Transcription :::THE LEAT THE PHONE FROM DRUWER FOURTEEN
-        Response: <Cleaned_Transcription>Delete the phone from drawer fourteen</Cleaned_Transcription>"""
+        Response: <Cleaned_Transcription>Delete the phone from container fourteen</Cleaned_Transcription>"""
 
         )
 
         print(latest_response)
         return jsonify({'transcription': latest_response})
+
+
+@app.route('/text_inventory', methods=['POST'])
+def text_inventory():
+    try:
+        prompt = request.json.get('prompt', '')
+        response = inventory_mapper.handle_text_inventory(prompt)
+        return response
+    except Exception as e:
+        app.logger.error(f"Error handling text inventory request: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
