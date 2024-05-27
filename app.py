@@ -41,7 +41,7 @@ audio_transcriber = None
 inventory_function_generator = InventoryFunctionGenerator(text_generator)
 
 # Initialize the InventoryClient
-base_url = "http://localhost:8080"  # Replace with your actual base URL
+base_url = os.getenv('ORGANIZER_SERVER_URL', "http://localhost:8080")
 inventory_client = InventoryClient(base_url)
 
 inventory_mapper = InventoryMapper(inventory_client, inventory_function_generator)
