@@ -20,12 +20,12 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # URL of the text generation server
 chat_gpt_url = "http://127.0.0.1:5002"
-#ollama_gpt_url = "http://localhost:5002"
+ollama_gpt_url = "http://127.0.0.1:5001"
 chatgpt_rest_llm = RestLLM(chat_gpt_url)
-#ollama_rest_llm = RestLLM(ollama_gpt_url)
+ollama_rest_llm = RestLLM(ollama_gpt_url)
 
 rest_inventory_client = InventoryClient(os.environ.get("ORGANIZER_SERVER_URL"))
-smart_finding_inventory_client = SmartFindingInventoryClient(rest_inventory_client, chatgpt_rest_llm)
+smart_finding_inventory_client = SmartFindingInventoryClient(rest_inventory_client, ollama_rest_llm)
 function_generator = InventoryFunctionGenerator(chatgpt_rest_llm)
 inventory_mapper = InventoryMapper(smart_finding_inventory_client, function_generator)
 audio_transcriber = AudioTranscriber()

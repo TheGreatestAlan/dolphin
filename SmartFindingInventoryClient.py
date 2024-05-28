@@ -1,3 +1,4 @@
+import json
 import uuid
 
 from Inventory import Inventory
@@ -16,9 +17,18 @@ class SmartFindingInventoryClient(Inventory):
         inventory = self.get_inventory()
 
         # Prepare the prompt for the text generator
-        inventory_list = "\n".join([f"{idx + 1}: {item}" for idx, item in enumerate(inventory)])
+        inventory_list = "\n".join(inventory)
         prompt = f"From this list, where is the {item_name}?\n{inventory_list}"
         system_message = "You are an inventory searching specialist"
+
+        # Create the JSON object to be passed to the LLM
+        json_payload = {
+            "prompt": prompt,
+            "system_message": system_message
+        }
+
+        # Print out the JSON
+        print(json.dumps(json_payload, indent=4))
 
         # Use the text generator to find the location
         response = self.text_generator.generate_response(prompt, system_message)
