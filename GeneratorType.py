@@ -1,5 +1,6 @@
 import enum
 
 class GeneratorType(enum.Enum):
-    LocalLLM = 'LocalLLM'
+    Mistral = 'Mistral'
+    Ollama3 = 'Ollama3'
     ChatGPT = 'ChatGPT'

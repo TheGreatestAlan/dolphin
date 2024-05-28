@@ -1,34 +1,15 @@
-from abc import ABC, abstractmethod
 import os
 import requests
-from transformers import AutoModelForCausalLM, AutoTokenizer
 
-
-# Abstract base class for text generation
-class LLMInterface(ABC):
-    @abstractmethod
-    def generate_response(self, conversation_id, prompt, system_message):
-        pass
-
-
-class LocalLLM(LLMInterface):
-    def __init__(self, model_path, cache_directory):
-        self.model = AutoModelForCausalLM.from_pretrained(model_path, device_map="auto", cache_dir=cache_directory).to(
-            'cuda')
-        self.tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True, cache_dir=cache_directory)
-
-    def generate_response(self, conversation_id, prompt, system_message):
-        input_ids = self.tokenizer.encode(system_message + prompt, return_tensors='pt').to('cuda')
-        response_ids = self.model.generate(input_ids, max_length=1000)
-        return conversation_id, self.tokenizer.decode(response_ids[0], skip_special_tokens=True)
+from llms.LLMInterface import LLMInterface
 
 
 class ChatpGPT4(LLMInterface):
-    def __init__(self, api_key, api_url):
-        self.api_key = api_key
-        self.api_url = api_url
+    def __init__(self):
+        self.api_key = os.environ.get("API_KEY")
+        self.api_url = os.environ.get("API_URL")
 
-    def generate_response(self, conversation_id, prompt, system_message):
+    def generate_response(self, prompt, system_message):
         data = {
             "model": "gpt-4",
             "messages": [
@@ -43,7 +24,7 @@ class ChatpGPT4(LLMInterface):
         response = requests.post(self.api_url, headers=headers, json=data)
         if response.status_code != 200:
             raise Exception(f"Failed to get valid response: {response.status_code} {response.text}")
-        return conversation_id, response.json()['choices'][0]['message']['content']
+        return response.json()['choices'][0]['message']['content']
 
 
 # Example usage
@@ -67,7 +48,7 @@ if __name__ == "__main__":
     """
 
     try:
-        conv_id, response = gpt4.generate_response(conversation_id, prompt, system_message)
+        conv_id, response = gpt4.generate_response(prompt, system_message)
         print(f"Conversation ID: {conv_id}\nResponse:\n{response}")
     except Exception as e:
         print(f"Error: {e}")

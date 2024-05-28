@@ -1,9 +1,6 @@
 from transformers import AutoModelForCausalLM, AutoTokenizer
-#from transformers import LlamaForCausalLM, LlamaTokenizer
 
 model_path = "M:\\workspace\\dolphin\\dolphin-2.5-mixtral-8x7b-GPTQ"
-#model_path = "cfahlgren1/natural-functions"  # Use the Hugging Face model identifier
-#model_path = "meta-llama/Meta-Llama-3-8B-Instruct"
 cache_directory =  "M:\\workspace\\dolphin"
 
 class TextGenerator:

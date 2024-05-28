@@ -2,8 +2,11 @@ import json
 import uuid
 from typing import Any
 
+from llms.LLMInterface import LLMInterface
+
+
 class InventoryFunctionGenerator:
-    def __init__(self, text_generator: Any):
+    def __init__(self, text_generator: LLMInterface):
         self.text_generator = text_generator
 
     def generate_function_call(self, prompt: str) -> dict:
@@ -24,9 +27,7 @@ class InventoryFunctionGenerator:
             "Respond only with the JSON object, without any additional text."
         )
 
-        conversation_id = str(uuid.uuid4())
-        conversation_id, response_text = self.text_generator.generate_response(conversation_id, prompt, system_message)
-
+        response_text = self.text_generator.generate_response(prompt, system_message)
         # Extract JSON part from the response
         try:
             response_json = json.loads(response_text)
