@@ -135,8 +135,8 @@ def transcribe_audio():
         Response: <Cleaned_Transcription>Delete the phone from container fourteen</Cleaned_Transcription>"""
         )
 
-        print(result['response'])
-        return jsonify({'transcription': result['response']})
+        print(result)
+        return jsonify({'transcription': result})
 
 
 @app.route('/text_inventory', methods=['POST'])

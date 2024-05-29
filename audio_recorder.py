@@ -2,12 +2,13 @@ import sounddevice as sd
 from scipy.io.wavfile import write
 import numpy as np
 import tkinter as tk
-from tkinter import messagebox
+from tkinter import scrolledtext
 from threading import Thread
 import requests
 import os
 import time
 import re
+import json
 
 class AudioRecorder:
     def __init__(self, fs=16000, output_directory="M:/model_cache/"):
@@ -21,6 +22,7 @@ class AudioRecorder:
         self.record_thread = None
         self.root = None
         self.myrecording = None
+        self.response_text = None
 
     def toggle_recording(self):
         if self.recording:
@@ -61,7 +63,8 @@ class AudioRecorder:
         try:
             with open(filepath, 'rb') as f:
                 files = {'file': (self.filename, f)}
-                response = requests.post(self.server_url + "/transcribe", files=files, auth=(self.username, self.password), verify=False)
+                response = requests.post(self.server_url + "/transcribe", files=files,
+                                         auth=(self.username, self.password), verify=False)
                 transcription_response = response.text
                 match = re.search(r'<Cleaned_Transcription>(.*?)</Cleaned_Transcription>', transcription_response)
                 if match:
@@ -76,18 +79,50 @@ class AudioRecorder:
         data = {
             "prompt": transcription
         }
-        response = requests.post(self.server_url + "/text_inventory", json=data, auth=(self.username, self.password), verify=False)
-        self.show_response(response.text)
+        response = requests.post(self.server_url + "/text_inventory", json=data, auth=(self.username, self.password),
+                                 verify=False)
+        self.root.after(0, self.show_response, response.text)
 
     def show_response(self, message):
-        messagebox.showinfo("Server Response", message)
+        try:
+            # Attempt to parse the message as JSON
+            json_response = json.loads(message)
+            if isinstance(json_response, dict):
+                if "response" in json_response:
+                    sorted_response = {
+                        k: json_response["response"][k] for k in sorted(
+                            json_response["response"].keys(),
+                            key=lambda x: (x.isdigit(), int(x) if x.isdigit() else x.lower())
+                        )
+                    }
+                    formatted_message = json.dumps({"response": sorted_response}, indent=4)
+                else:
+                    formatted_message = json.dumps(json_response, indent=4)
+            elif isinstance(json_response, list):
+                formatted_message = json.dumps(json_response, indent=4)
+            else:
+                formatted_message = message.replace("\\n", "\n")
+        except Exception:
+            # If it's not JSON, show it as a string
+            formatted_message = message.replace("\\n", "\n")
+
+        self.response_text.config(state=tk.NORMAL)
+        self.response_text.delete(1.0, tk.END)
+        self.response_text.insert(tk.END, formatted_message)
+        self.response_text.config(state=tk.DISABLED)
 
     def run_gui(self):
         self.root = tk.Tk()
         self.root.title("Audio Recorder")
+
         toggle_button = tk.Button(self.root, text="Toggle Recording", command=self.toggle_recording)
         toggle_button.pack(pady=20)
+
+        self.response_text = scrolledtext.ScrolledText(self.root, wrap=tk.WORD, state=tk.DISABLED, height=15)
+        self.response_text.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+
         self.root.mainloop()
+
 
 if __name__ == "__main__":
     recorder = AudioRecorder()
