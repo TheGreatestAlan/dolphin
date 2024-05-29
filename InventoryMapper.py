@@ -25,9 +25,9 @@ class InventoryMapper:
             action_mapping = {
                 "get_inventory": lambda _: self.inventory.get_inventory(),
                 "find_location": lambda params: self.inventory.find_location(params["item_name"]),
-                "find_container": lambda params: self.inventory.find_container(params["container_id"]),
+                "get_container": lambda params: self.inventory.get_container(params["container_id"]),
                 "create_items": lambda params: self.inventory.create_items(params["container"], params["items"]),
-                "delete_items": lambda params: self.inventory.delete_items(params["container"], params["items"])
+                "delete_items": lambda params: self.inventory.delete_items(params["container"], params["items"]),
             }
 
             # Debug: Check if action is in the action_mapping
@@ -37,9 +37,9 @@ class InventoryMapper:
 
             required_params = {
                 "find_location": ["item_name"],
-                "find_container": ["container_id"],
+                "get_container": ["container_id"],
                 "create_items": ["container", "items"],
-                "delete_items": ["container", "items"]
+                "delete_items": ["container", "items"],
             }
 
             # Debug: Print parameters and required parameters for the action

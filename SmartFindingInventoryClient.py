@@ -4,6 +4,7 @@ import uuid
 from Inventory import Inventory
 from llms.LLMInterface import LLMInterface
 
+
 class SmartFindingInventoryClient(Inventory):
     def __init__(self, inventory: Inventory, text_generator: LLMInterface):
         self.inventory = inventory
@@ -35,8 +36,8 @@ class SmartFindingInventoryClient(Inventory):
 
         return response
 
-    def find_container(self, container_id):
-        return self.inventory.find_container(container_id)
+    def get_container(self, container_id):
+        return self.inventory.get_container(container_id)
 
     def create_items(self, container, items):
         return self.inventory.create_items(container, items)

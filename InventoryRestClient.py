@@ -17,8 +17,8 @@ class InventoryClient(Inventory):
         response = self._make_request('GET', url)
         return response
 
-    def find_container(self, container_id):
-        url = f"{self.base_url}/inventory/container/{container_id}"
+    def get_container(self, container_id):
+        url = f"{self.base_url}/inventory/item/container/{container_id}"
         response = self._make_request('GET', url)
         return response
 

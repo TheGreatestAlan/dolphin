@@ -10,7 +10,7 @@ class Inventory(ABC):
         pass
 
     @abstractmethod
-    def find_container(self, container_id: str):
+    def get_container(self, container_id: str):
         pass
 
     @abstractmethod
