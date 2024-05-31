@@ -1,3 +1,5 @@
+import os
+
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from llms.LLMInterface import LLMInterface
@@ -5,7 +7,7 @@ from llms.LLMInterface import LLMInterface
 
 class Ollama3LLM(LLMInterface):
     def __init__(self):
-        self.model_id = "meta-llama/Meta-Llama-3-8B-Instruct"
+        self.model_id = "meta-llama/Meta-Llama-3-70B-Instruct"
         self.model_cache_dir = "M:\\workspace\\dolphin"  # Hard-coded model cache directory
 
         # Verify if GPU is available
@@ -17,6 +19,7 @@ class Ollama3LLM(LLMInterface):
             self.model_id,
             torch_dtype=torch.bfloat16,
             cache_dir=self.model_cache_dir,
+            use_auth_token=os.getenv("HUGGING_FACE_TOKEN")  # Use the token
         ).to(self.device)
 
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_id, cache_dir=self.model_cache_dir)
