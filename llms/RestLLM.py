@@ -1,7 +1,5 @@
 import requests
-
 from llms.LLMInterface import LLMInterface
-
 
 class RestLLM(LLMInterface):
     def __init__(self, base_url):
@@ -13,7 +11,6 @@ class RestLLM(LLMInterface):
             'system_message': system_message
         }
         response = requests.post(f"{self.base_url}/generate", json=payload)
-        response.raise_for_status()  # Raise an error for bad responses
+        response.raise_for_status()
         response_json = response.json()
-        res = response_json['response']
-        return res
+        return response_json['response']
