@@ -30,7 +30,7 @@ class FunctionMapper:
 
     def wrap_to_action_response(self, function_response: FunctionResponse, action_name:str) -> dict:
         action_name = action_name  # Replace with actual action name
-        status = function_response.status.upper()  # Convert to uppercase for consistency
+        status = function_response.status.name
         value = function_response.response
         return {
             "action_name": action_name,

@@ -2,6 +2,9 @@ import json
 import os
 from flask import jsonify
 
+from FunctionResponse import FunctionResponse, Status
+
+
 class ChatHandler:
     def __init__(self, sessions, sessions_file_path='sessions.json'):
         self.sessions = sessions
@@ -47,7 +50,7 @@ class ChatHandler:
         self.sessions[session_id].append({"message": full_content})
         self.save_sessions_to_file()
         print(f"Sending message to user: {full_content}")
-        return jsonify({"status": "success", "data": "Message sent"})  # Assume jsonify is acceptable here
+        return FunctionResponse(Status.SUCCESS, "completed")
 
     def poll_response(self, session_id):
         if len(self.sessions.get(session_id, [])) == 0:

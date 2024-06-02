@@ -1,6 +1,6 @@
 import json
 
-from FunctionResponse import FunctionResponse
+from FunctionResponse import FunctionResponse, Status
 from integrations.Inventory import Inventory
 from llms.LLMInterface import LLMInterface
 
@@ -34,9 +34,7 @@ class SmartFindingInventoryClient(Inventory):
         # Get the entire inventory
         inventory = self.inventory.get_inventory().response
 
-        # Prepare the prompt for the text generator
-        inventory_list = "\n".join([f"{key}: {', '.join(value)}" for key, value in inventory.items()])
-        prompt = f"From this list, where is the {item_name}?\n{inventory_list}"
+        prompt = f"From this list, where is the {item_name}?\n{inventory}"
         system_message = "You are an inventory searching specialist"
 
         # Create the JSON object to be passed to the LLM
@@ -51,7 +49,7 @@ class SmartFindingInventoryClient(Inventory):
         # Use the text generator to find the location
         response = self.text_generator.generate_response(prompt, system_message)
 
-        return self.map_to_function_response(response)
+        return FunctionResponse(Status.SUCCESS, response)
 
     def get_container(self, container_id) -> FunctionResponse:
         return self.inventory.get_container(container_id)
