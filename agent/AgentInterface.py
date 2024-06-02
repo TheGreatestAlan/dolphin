@@ -28,6 +28,7 @@ function_mapper = FunctionMapper(smart_finding_inventory_client, function_genera
 
 # Ensure the system message is read at startup
 SYSTEM_MESSAGE = ''
+FUNCTION_LIST = ''
 
 
 def read_system_message(file_path='../prompt/SystemPrompt.txt'):
@@ -46,6 +47,20 @@ def read_system_message(file_path='../prompt/SystemPrompt.txt'):
 read_system_message()
 chat_handler.load_sessions_from_file()
 
+
+def readFunctionList(file_path='../prompt/functionList.txt'):
+    global FUNCTION_LIST
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    absolute_path = os.path.normpath(os.path.join(script_dir, file_path))
+    try:
+        with open(absolute_path, 'r') as file:
+            FUNCTION_LIST = file.read()
+    except FileNotFoundError:
+        print(f"File not found: {absolute_path}")
+    except Exception as e:
+        print(f"Error reading system message: {e}")
+
+readFunctionList()
 
 def handle_llm_response(generated_text, session_id, nesting_level=0):
     if nesting_level > MAX_NESTING_LEVEL:
@@ -136,7 +151,7 @@ def message_agent():
 
     try:
         generated_text = send_message_to_llm(
-            SYSTEM_MESSAGE,
+            SYSTEM_MESSAGE + "\n" + FUNCTION_LIST,
             user_message,
             None,
             None
