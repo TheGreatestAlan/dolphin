@@ -31,8 +31,7 @@ json
 {
   "action": "send_message",
   "parameters": {
-    "content": "Here is the information you requested.",
-    "notify": true
+    "content": "Here is the information you requested."
   }
 }
 schedule_inference: To schedule your next thinking session, use the schedule_inference function. This allows you to plan your next burst of activity. There are two types of inference events:

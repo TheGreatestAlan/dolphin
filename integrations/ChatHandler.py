@@ -21,7 +21,10 @@ class ChatHandler:
         else:
             print("Sessions file not found, starting with an empty session.")
 
+
     def send_message(self, session_id, content):
+        if session_id not in self.sessions:
+            self.sessions[session_id] = []
         self.sessions[session_id].append({
             "prompt": "Agent",
             "response": content

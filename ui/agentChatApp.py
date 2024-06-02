@@ -67,7 +67,7 @@ class ChatApp:
                 response = requests.get(f"{self.agent_url}/poll_response", params={'session_id': self.session_id})
                 response.raise_for_status()
                 if response.status_code == 200:
-                    generated_text = response.json()['response']
+                    generated_text = response.text
                     self.append_chat("Agent", generated_text)
                     break
             except requests.exceptions.RequestException as e:

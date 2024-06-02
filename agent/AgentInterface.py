@@ -64,7 +64,7 @@ def handle_llm_response(generated_text, session_id, nesting_level=0):
             return
 
         return handle_llm_response(
-            send_message_to_llm(SYSTEM_MESSAGE, None, response_json['self_message'], function_response),
+            send_message_to_llm(SYSTEM_MESSAGE, None, response_json['self_message'], function_response), session_id,
             nesting_level + 1
         )
 
@@ -80,6 +80,7 @@ def handle_llm_response(generated_text, session_id, nesting_level=0):
         }
         return handle_llm_response(
             send_message_to_llm(SYSTEM_MESSAGE, None, response_json['self_message'], json.dumps(error_response)),
+            session_id,
             nesting_level + 1
         )
 
@@ -140,8 +141,6 @@ def message_agent():
             None,
             None
         )
-        # Store the response in the session
-        chat_handler.sessions[session_id].append(generated_text)
         handle_llm_response(generated_text, session_id)
         return '', 200
     except requests.RequestException as e:
@@ -159,6 +158,8 @@ def poll_response():
         return '', 204
 
     latest_response = chat_handler.sessions[session_id][-1]
+    print("LATEST RESPONSE")
+    print(jsonify(latest_response))
     return jsonify(latest_response)
 
 
