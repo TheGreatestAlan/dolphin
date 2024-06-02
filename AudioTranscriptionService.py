@@ -1,4 +1,4 @@
-from AudioTranscriber import AudioTranscriber
+from asr.AudioTranscriber import AudioTranscriber
 
 
 class AudioTranscriptionService:

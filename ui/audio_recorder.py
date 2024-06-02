@@ -11,10 +11,11 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 import itertools
 import queue
-from AudioTranscriber import AudioTranscriber
+
+from asr.WhisperTranscriber import WhisperTranscriber
 
 # Initialize AudioTranscriber
-audioTranscriber = AudioTranscriber()
+audioTranscriber = WhisperTranscriber()
 
 # Load the Silero VAD model
 model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad', force_reload=True)
@@ -35,7 +36,7 @@ def int2float(sound):
 
 class AudioRecorder:
     def __init__(self, fs=16000, output_directory="M:/model_cache/6_2"):
-        self.audioTranscriber = AudioTranscriber()
+        self.audioTranscriber = WhisperTranscriber()
         self.server_url = os.getenv('SERVER_URL')
         self.username = os.getenv("USERNAME")
         self.password = os.getenv('PASSWORD')
