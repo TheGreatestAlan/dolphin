@@ -1,128 +1,181 @@
-import sounddevice as sd
+import pyaudio
 from scipy.io.wavfile import write
 import numpy as np
 import tkinter as tk
 from tkinter import scrolledtext
 from threading import Thread
-import requests
 import os
-import time
-import re
-import json
+import time as tm
+import torch
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
+import itertools
+import queue
+from AudioTranscriber import AudioTranscriber
+
+# Initialize AudioTranscriber
+audioTranscriber = AudioTranscriber()
+
+# Load the Silero VAD model
+model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad', force_reload=True)
+(get_speech_ttimestamps, save_audio, read_audio, VADIterator, collect_chunks) = utils
+
+def validate(model, inputs: torch.Tensor, sr: int):
+    with torch.no_grad():
+        outs = model(inputs, sr)
+    return outs
+
+def int2float(sound):
+    abs_max = np.abs(sound).max()
+    sound = sound.astype('float32')
+    if abs_max > 0:
+        sound *= 1 / 32768
+    sound = sound.squeeze()
+    return sound
 
 class AudioRecorder:
-    def __init__(self, fs=16000, output_directory="M:/model_cache/"):
+    def __init__(self, fs=16000, output_directory="M:/model_cache/6_2"):
+        self.audioTranscriber = AudioTranscriber()
         self.server_url = os.getenv('SERVER_URL')
         self.username = os.getenv("USERNAME")
         self.password = os.getenv('PASSWORD')
         self.fs = fs
-        self.output_directory = output_directory
+        self.output_directory = os.path.normpath(output_directory)
         self.filename = None
         self.recording = False
         self.record_thread = None
         self.root = None
         self.myrecording = None
         self.response_text = None
+        self.voiced_confidences = []
+        self.continue_recording = True
+        self.current_audio_chunk = []
+        self.last_voice_time = None
+        self.audio_queue = queue.Queue()
+        self.transcription_queue = queue.Queue()
 
-    def toggle_recording(self):
-        if self.recording:
-            self.stop_recording()
+        # Start the transcription thread
+        self.transcription_thread = Thread(target=self.process_transcription_queue)
+        self.transcription_thread.start()
+
+    def stop(self):
+        input("Press Enter to stop the recording:")
+        self.continue_recording = False
+        self.transcription_queue.put(None)  # Signal the transcription thread to stop
+
+    def audio_callback(self, in_data, frame_count, time_info, status):
+        audio_int16 = np.frombuffer(in_data, np.int16)
+        audio_float32 = int2float(audio_int16)
+        new_confidence = validate(model, torch.from_numpy(audio_float32).unsqueeze(0), self.fs).item()
+        self.voiced_confidences.append(new_confidence)
+
+        current_time = tm.time()
+        if new_confidence > 0.5:  # Voice detected
+            self.current_audio_chunk.append(audio_int16)
+            self.last_voice_time = current_time
         else:
-            self.start_recording()
+            if self.current_audio_chunk and (current_time - self.last_voice_time) > 1.0:
+                self.save_detected_voice()
 
-    def record_audio(self):
-        with sd.InputStream(samplerate=self.fs, channels=1, callback=self.audio_callback):
-            while self.recording:
-                sd.sleep(100)
+        return (in_data, pyaudio.paContinue)
 
-    def audio_callback(self, indata, frames, time, status):
-        if self.myrecording is None:
-            self.myrecording = indata.copy()
-        else:
-            self.myrecording = np.vstack((self.myrecording, indata))
+    def save_detected_voice(self):
+        if self.current_audio_chunk:
+            self.myrecording = np.concatenate(self.current_audio_chunk)
+            self.current_audio_chunk = []
+            temp_filename = f"temp_detected_voice_{int(tm.time())}.wav"
+            temp_filepath = os.path.join(self.output_directory, temp_filename)
+            write(temp_filepath, self.fs, self.myrecording)
+            self.transcription_queue.put(temp_filepath)
+            print(f"Saved detected voice to {temp_filepath}")
+
+    def process_transcription_queue(self):
+        while True:
+            temp_filepath = self.transcription_queue.get()
+            if temp_filepath is None:
+                break
+            self.transcribe_in_thread(temp_filepath)
+            os.remove(temp_filepath)  # Clean up temporary file
+
+    def transcribe_in_thread(self, temp_filepath):
+        print("transcribing")
+        transcription = self.audioTranscriber.transcribe_audio(temp_filepath)
+        self.audio_queue.put(transcription)
 
     def start_recording(self):
-        if not self.recording:
-            self.recording = True
-            self.myrecording = None
-            self.filename = f"recording_{int(time.time())}.wav"
-            self.record_thread = Thread(target=self.record_audio)
-            self.record_thread.start()
+        self.recording = True
+        self.myrecording = None
 
-    def stop_recording(self):
+        p = pyaudio.PyAudio()
+        stream = p.open(format=pyaudio.paInt16,
+                        channels=1,
+                        rate=self.fs,
+                        input=True,
+                        frames_per_buffer=1024,
+                        stream_callback=self.audio_callback)
+
+        self.continue_recording = True
+
+        fig, ax = plt.subplots()
+        xdata, ydata = [], []
+        ln, = plt.plot([], [], 'b-', animated=True)
+
+        def init():
+            ax.set_xlim(0, 100)
+            ax.set_ylim(0, 1)
+            return ln,
+
+        def update(frame):
+            xdata.append(len(xdata))
+            ydata.append(self.voiced_confidences[-1])
+            ln.set_data(xdata, ydata)
+            if len(xdata) > 100:
+                ax.set_xlim(len(xdata) - 100, len(xdata))
+            return ln,
+
+        ani = FuncAnimation(fig, update, frames=itertools.count, init_func=init, blit=True, save_count=100)
+        plt.show(block=False)
+
+        stream.start_stream()
+
+        stop_listener = Thread(target=self.stop)
+        stop_listener.start()
+
+        while self.continue_recording:
+            plt.pause(0.1)
+            if not self.audio_queue.empty():
+                transcription = self.audio_queue.get()
+                self.update_gui(transcription)
+
+        stream.stop_stream()
+        stream.close()
+        p.terminate()
+        plt.close(fig)
+
         self.recording = False
-        self.record_thread.join()
-        filepath = os.path.join(self.output_directory, self.filename)
-        if not os.path.exists(self.output_directory):
-            os.makedirs(self.output_directory)
-        write(filepath, self.fs, self.myrecording)
-        print("Recording stopped.")
-        self.process_transcription(filepath)
+        if self.current_audio_chunk:
+            self.save_detected_voice()
 
-    def process_transcription(self, filepath):
-        try:
-            with open(filepath, 'rb') as f:
-                files = {'file': (self.filename, f)}
-                response = requests.post(self.server_url + "/transcribe", files=files,
-                                         auth=(self.username, self.password), verify=False)
-                transcription_response = response.text
-                match = re.search(r'<Cleaned_Transcription>(.*?)</Cleaned_Transcription>', transcription_response)
-                if match:
-                    cleaned_transcription = match.group(1)
-                    self.send_transcription_to_inventory(cleaned_transcription)
-                else:
-                    self.root.after(0, self.show_response, "No transcription found")
-        except Exception as e:
-            self.root.after(0, self.show_response, f"Failed to send audio file: {e}")
+    def update_gui(self, message):
+        self.root.after(0, self._update_gui, message)
 
-    def send_transcription_to_inventory(self, transcription):
-        data = {
-            "prompt": transcription
-        }
-        response = requests.post(self.server_url + "/text_inventory", json=data, auth=(self.username, self.password),
-                                 verify=False)
-        self.root.after(0, self.show_response, response.text)
-
-    def show_response(self, message):
-        try:
-            # Attempt to parse the message as JSON
-            json_response = json.loads(message)
-            if isinstance(json_response, dict):
-                if "response" in json_response:
-                    sorted_response = {
-                        k: json_response["response"][k] for k in sorted(
-                            json_response["response"].keys(),
-                            key=lambda x: (x.isdigit(), int(x) if x.isdigit() else x.lower())
-                        )
-                    }
-                    formatted_message = json.dumps({"response": sorted_response}, indent=4)
-                else:
-                    formatted_message = json.dumps(json_response, indent=4)
-            elif isinstance(json_response, list):
-                formatted_message = json.dumps(json_response, indent=4)
-            else:
-                formatted_message = message.replace("\\n", "\n")
-        except Exception:
-            # If it's not JSON, show it as a string
-            formatted_message = message.replace("\\n", "\n")
-
+    def _update_gui(self, message):
         self.response_text.config(state=tk.NORMAL)
         self.response_text.delete(1.0, tk.END)
-        self.response_text.insert(tk.END, formatted_message)
+        self.response_text.insert(tk.END, message)
         self.response_text.config(state=tk.DISABLED)
 
     def run_gui(self):
         self.root = tk.Tk()
         self.root.title("Audio Recorder")
 
-        toggle_button = tk.Button(self.root, text="Toggle Recording", command=self.toggle_recording)
-        toggle_button.pack(pady=20)
-
         self.response_text = scrolledtext.ScrolledText(self.root, wrap=tk.WORD, state=tk.DISABLED, height=15)
         self.response_text.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
 
-        self.root.mainloop()
+        self.record_thread = Thread(target=self.start_recording)
+        self.record_thread.start()
 
+        self.root.mainloop()
 
 if __name__ == "__main__":
     recorder = AudioRecorder()
