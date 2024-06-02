@@ -1,5 +1,6 @@
 import json
 
+from FunctionResponse import FunctionResponse
 from integrations.Inventory import Inventory
 from llms.LLMInterface import LLMInterface
 
@@ -9,12 +10,29 @@ class SmartFindingInventoryClient(Inventory):
         self.inventory = inventory
         self.text_generator = text_generator
 
-    def get_inventory(self):
-        return self.inventory.get_inventory()
+    def map_to_function_response(self, response):
+        if response is None:
+            return FunctionResponse("FAILURE", "An error occurred")
+        elif 200 <= response.status_code < 300:
+            # Successful response (may include 204 No Content)
+            try:
+                data = response.json()
+                return FunctionResponse("SUCCESS", data)
+            except ValueError:
+                # Likely an empty response body
+                return FunctionResponse("SUCCESS", "Action completed successfully")
+        else:
+            # Handle error responses
+            error_msg = f"Error {response.status_code}: {response.text}"
+            return FunctionResponse("FAILURE", error_msg)
 
-    def find_location(self, item_name):
+    def get_inventory(self) -> FunctionResponse:
+        function_res = self.inventory.get_inventory()
+        return function_res
+
+    def find_location(self, item_name) -> FunctionResponse:
         # Get the entire inventory
-        inventory = self.get_inventory()
+        inventory = self.inventory.get_inventory().response
 
         # Prepare the prompt for the text generator
         inventory_list = "\n".join([f"{key}: {', '.join(value)}" for key, value in inventory.items()])
@@ -33,13 +51,13 @@ class SmartFindingInventoryClient(Inventory):
         # Use the text generator to find the location
         response = self.text_generator.generate_response(prompt, system_message)
 
-        return response
+        return self.map_to_function_response(response)
 
-    def get_container(self, container_id):
+    def get_container(self, container_id) -> FunctionResponse:
         return self.inventory.get_container(container_id)
 
-    def create_items(self, container, items):
+    def create_items(self, container, items) -> FunctionResponse:
         return self.inventory.create_items(container, items)
 
-    def delete_items(self, container, items):
+    def delete_items(self, container, items) -> FunctionResponse:
         return self.inventory.delete_items(container, items)

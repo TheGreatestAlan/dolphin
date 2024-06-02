@@ -1,5 +1,8 @@
+import json
+
 import requests
 
+from FunctionResponse import FunctionResponse
 from integrations.Inventory import Inventory
 
 
@@ -7,45 +10,60 @@ class InventoryClient(Inventory):
     def __init__(self, base_url):
         self.base_url = base_url
 
-    def get_inventory(self):
+    def map_to_function_response(self, response):
+        if response is None:
+            return FunctionResponse("FAILURE", "An error occurred")
+        elif response.status_code >= 200 and response.status_code < 300:
+            # Successful response (may include 204 No Content)
+            try:
+                data = response.json()
+                if isinstance(data, dict):
+                    data_string = json.dumps(data)  # Convert dictionary to JSON string
+                else:
+                    data_string = str(data)  # Convert other types to string if needed
+
+                return FunctionResponse("SUCCESS", data_string)
+            except ValueError:
+                # Likely an empty response body
+                return FunctionResponse("SUCCESS", "Action completed successfully")
+        else:
+            # Handle error responses
+            error_msg = f"Error {response.status_code}: {response.text}"
+            return FunctionResponse("FAILURE", error_msg)
+
+    def get_inventory(self) -> FunctionResponse:
         url = f"{self.base_url}/inventory"
-        response = self._make_request('GET', url)
-        return response
+        return self._make_request('GET', url)
 
-    def find_location(self, item_name):
+    def find_location(self, item_name) -> FunctionResponse:
         url = f"{self.base_url}/inventory/item/{item_name}"
-        response = self._make_request('GET', url)
-        return response
+        return self._make_request('GET', url)
 
-    def get_container(self, container_id):
+    def get_container(self, container_id)  -> FunctionResponse:
         url = f"{self.base_url}/inventory/item/container/{container_id}"
-        response = self._make_request('GET', url)
-        return response
+        return self._make_request('GET', url)
 
-    def create_items(self, container, items):
+    def create_items(self, container, items) -> FunctionResponse:
         url = f"{self.base_url}/inventory/items"
         data = {"container": container, "items": items}
-        response = self._make_request('POST', url, json=data)
-        return response
+        return self._make_request('POST', url, json=data)
 
-    def delete_items(self, container, items):
+    def delete_items(self, container, items) -> FunctionResponse:
         url = f"{self.base_url}/inventory/items"
         data = {"container": container, "items": items}
-        response = self._make_request('DELETE', url, json=data)
-        return response
+        return self._make_request('DELETE', url, json=data)
 
-    def _make_request(self, method, url, **kwargs):
+    def _make_request(self, method, url, **kwargs) -> FunctionResponse:
         try:
             response = requests.request(method, url, **kwargs)
-            response.raise_for_status()
-            if response.status_code != 204:  # No Content
-                return response.json()
-            return {"message": "Action completed successfully"}
-        except requests.exceptions.HTTPError as http_err:
-            print(f"HTTP error occurred: {http_err}")
-        except Exception as err:
-            print(f"Other error occurred: {err}")
-        return None
+            response.raise_for_status()  # Raise for HTTP errors (200-299)
+            return self.map_to_function_response(response)
+        except requests.exceptions.RequestException as err:  # Catch all request errors
+            error_msg = f"Request error: {err}"
+            return FunctionResponse("FAILURE", error_msg)
+        except Exception as err:  # Catch other unexpected errors
+            error_msg = f"An unexpected error occurred: {err}"
+            return FunctionResponse("FAILURE", error_msg)
 
 
 # Example usage:
