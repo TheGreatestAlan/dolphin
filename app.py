@@ -1,11 +1,11 @@
 from AudioTranscriber import AudioTranscriber
-from InventoryMapper import InventoryMapper
+from FunctionMapper import FunctionMapper
 from flask import Flask, request, jsonify
 import time
 import os
 from werkzeug.utils import secure_filename
 
-from InventoryRestClient import InventoryClient
+from integrations.InventoryRestClient import InventoryClient
 from SmartFindingInventoryClient import SmartFindingInventoryClient
 from functiongenerator.InventoryFunctionGenerator import InventoryFunctionGenerator
 import uuid
@@ -27,7 +27,7 @@ ollama_rest_llm = RestLLM(ollama_gpt_url)
 rest_inventory_client = InventoryClient(os.environ.get("ORGANIZER_SERVER_URL"))
 smart_finding_inventory_client = SmartFindingInventoryClient(rest_inventory_client, chatgpt_rest_llm)
 function_generator = InventoryFunctionGenerator(chatgpt_rest_llm)
-inventory_mapper = InventoryMapper(smart_finding_inventory_client, function_generator)
+inventory_mapper = FunctionMapper(smart_finding_inventory_client, function_generator)
 audio_transcriber = AudioTranscriber()
 rest_llm = chatgpt_rest_llm
 
@@ -143,7 +143,7 @@ def transcribe_audio():
 def text_inventory():
     try:
         prompt = request.json.get('prompt', '')
-        response = inventory_mapper.handle_text_inventory(prompt)
+        response = inventory_mapper.handle_function_call(prompt)
         return response
     except Exception as e:
         app.logger.error(f"Error handling text inventory request: {e}")

@@ -1,7 +1,6 @@
 import json
-import uuid
 
-from Inventory import Inventory
+from integrations.Inventory import Inventory
 from llms.LLMInterface import LLMInterface
 
 

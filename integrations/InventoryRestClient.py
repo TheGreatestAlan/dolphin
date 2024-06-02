@@ -1,6 +1,6 @@
 import requests
 
-from Inventory import Inventory
+from integrations.Inventory import Inventory
 
 
 class InventoryClient(Inventory):

@@ -7,6 +7,7 @@ __pycache__/
 
 # Ignore all model directories
 /models--*/
+models/
 
 # Ignore wav files
 *.wav

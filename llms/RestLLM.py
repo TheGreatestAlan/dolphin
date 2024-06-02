@@ -10,7 +10,12 @@ class RestLLM(LLMInterface):
             'prompt': prompt,
             'system_message': system_message
         }
+
+        print("PROMPT::\n")
+        print(prompt)
         response = requests.post(f"{self.base_url}/generate", json=payload)
         response.raise_for_status()
         response_json = response.json()
+        print("RESPONSE::\n")
+        print(response_json)
         return response_json['response']

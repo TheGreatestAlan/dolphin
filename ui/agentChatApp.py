@@ -49,15 +49,30 @@ class ChatApp:
     def _send_prompt(self, prompt):
         data = {
             'session_id': self.session_id,
-            'prompt': prompt
+            'user_message': prompt
         }
         try:
-            response = requests.post(f"{self.agent_url}/generate", json=data)
+            response = requests.post(f"{self.agent_url}/message_agent", json=data)
             response.raise_for_status()
-            generated_text = response.json()['response']
-            self.append_chat("Agent", generated_text)
+            self.append_chat("System", "Message sent to agent.")
+            # Start a thread to poll for the agent's response
+            thread = threading.Thread(target=self._poll_for_response)
+            thread.start()
         except requests.exceptions.RequestException as e:
-            self.append_chat("System", f"Failed to generate response: {e}")
+            self.append_chat("System", f"Failed to send message: {e}")
+
+    def _poll_for_response(self):
+        while True:
+            try:
+                response = requests.get(f"{self.agent_url}/poll_response", params={'session_id': self.session_id})
+                response.raise_for_status()
+                if response.status_code == 200:
+                    generated_text = response.json()['response']
+                    self.append_chat("Agent", generated_text)
+                    break
+            except requests.exceptions.RequestException as e:
+                self.append_chat("System", f"Failed to get response: {e}")
+                break
 
     def append_chat(self, speaker, text):
         self.chat_window.config(state='normal')
@@ -84,7 +99,6 @@ class ChatApp:
     def on_closing(self):
         self.end_session()
         self.root.destroy()
-
 
 if __name__ == "__main__":
     root = tk.Tk()
