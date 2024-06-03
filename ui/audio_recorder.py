@@ -49,6 +49,8 @@ class AudioRecorder:
         self.last_voice_time = None
         self.audio_queue = queue.Queue()
         self.transcription_queue = queue.Queue()
+        self.voice_level_canvas = None
+        self.max_confidence = 0.5  # Initial max confidence for scaling
 
         # Initialize the AgentRestClient
         self.agent_client = AgentRestClient(os.environ.get("AGENT_URL", "http://127.0.0.1:5000"))
@@ -77,6 +79,8 @@ class AudioRecorder:
         new_confidence = validate(model, torch.from_numpy(audio_float32).unsqueeze(0), self.fs).item()
         self.voiced_confidences.append(new_confidence)
 
+        self.update_voice_level_graph(new_confidence)
+
         current_time = tm.time()
         if new_confidence > 0.5:  # Voice detected
             self.current_audio_chunk.append(audio_int16)
@@ -86,6 +90,18 @@ class AudioRecorder:
                 self.save_detected_voice()
 
         return (in_data, pyaudio.paContinue)
+
+    def update_voice_level_graph(self, new_confidence):
+        self.voice_level_canvas.delete("all")
+        self.voiced_confidences = self.voiced_confidences[-100:]  # Keep the last 100 values
+
+        if new_confidence > self.max_confidence:
+            self.max_confidence = new_confidence
+
+        for i, confidence in enumerate(self.voiced_confidences):
+            x = i * 5
+            y = 100 - (confidence / self.max_confidence) * 100
+            self.voice_level_canvas.create_rectangle(x, y, x + 5, 100, fill="blue")
 
     def save_detected_voice(self):
         if self.current_audio_chunk:
@@ -106,21 +122,17 @@ class AudioRecorder:
             os.remove(temp_filepath)  # Clean up temporary file
 
     def transcribe_in_thread(self, temp_filepath):
-        print("transcribing")
         transcription = self.audioTranscriber.transcribe_audio(temp_filepath)
         self.audio_queue.put(transcription)
         self.send_to_agent(transcription)
 
     def send_to_agent(self, transcription):
-        print("sending transcription to agent")
-        self.append_chat("You", transcription)
         thread = Thread(target=self._send_to_agent, args=(transcription,))
         thread.start()
 
     def _send_to_agent(self, transcription):
         try:
-            response = self.agent_client.send_prompt(transcription)
-            print(response)
+            self.agent_client.send_prompt(transcription)
             self.poll_agent_response()
         except Exception as e:
             print(f"Failed to send prompt to agent: {e}")
@@ -133,9 +145,9 @@ class AudioRecorder:
         try:
             while True:
                 response = self.agent_client.poll_response()
-                print(f"Polled response: {response}")
-                self.update_gui(response)
-                break
+                if response:
+                    self.update_chat("Agent", response)
+                    break
         except Exception as e:
             print(f"Failed to poll response from agent: {e}")
 
@@ -161,7 +173,7 @@ class AudioRecorder:
             tm.sleep(0.1)
             if not self.audio_queue.empty():
                 transcription = self.audio_queue.get()
-                self.update_gui(transcription)
+                self.update_chat("You", transcription)
 
         stream.stop_stream()
         stream.close()
@@ -178,15 +190,12 @@ class AudioRecorder:
         except Exception as e:
             print(f"Failed to end session with agent: {e}")
 
-    def update_gui(self, message):
-        self.root.after(0, self._update_gui, message)
+    def update_chat(self, speaker, message):
+        self.root.after(0, self._update_chat, speaker, message)
 
-    def _update_gui(self, message):
-        self.append_chat("Agent", message)
-
-    def append_chat(self, speaker, text):
+    def _update_chat(self, speaker, message):
         self.response_text.config(state=tk.NORMAL)
-        self.response_text.insert(tk.END, f"{speaker}: {text}\n")
+        self.response_text.insert(tk.END, f"{speaker}: {message}\n")
         self.response_text.config(state=tk.DISABLED)
         self.response_text.yview(tk.END)
 
@@ -196,6 +205,9 @@ class AudioRecorder:
 
         self.response_text = scrolledtext.ScrolledText(self.root, wrap=tk.WORD, state=tk.DISABLED, height=15)
         self.response_text.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
+
+        self.voice_level_canvas = tk.Canvas(self.root, height=100, bg="white")
+        self.voice_level_canvas.pack(pady=10, padx=10, fill=tk.BOTH, expand=True)
 
         self.record_thread = Thread(target=self.start_recording)
         self.record_thread.start()

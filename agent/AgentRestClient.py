@@ -1,3 +1,5 @@
+import json
+
 import requests
 
 
@@ -39,7 +41,8 @@ class AgentRestClient:
         try:
             response = requests.get(f"{self.agent_url}/poll_response", params={'session_id': self.session_id})
             response.raise_for_status()
-            return response.json()['response']
+            res = json.loads(response.text)
+            return res["message"]
         except requests.exceptions.RequestException as e:
             raise Exception(f"Failed to poll response: {e}")
 
