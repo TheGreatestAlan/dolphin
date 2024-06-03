@@ -2,7 +2,7 @@ import json
 
 import requests
 
-from FunctionResponse import FunctionResponse
+from FunctionResponse import FunctionResponse, Status
 from integrations.Inventory import Inventory
 
 
@@ -12,7 +12,7 @@ class InventoryClient(Inventory):
 
     def map_to_function_response(self, response):
         if response is None:
-            return FunctionResponse("FAILURE", "An error occurred")
+            return FunctionResponse(Status.FAILURE, "An error occurred")
         elif response.status_code >= 200 and response.status_code < 300:
             # Successful response (may include 204 No Content)
             try:
@@ -22,14 +22,14 @@ class InventoryClient(Inventory):
                 else:
                     data_string = str(data)  # Convert other types to string if needed
 
-                return FunctionResponse("SUCCESS", data_string)
+                return FunctionResponse(Status.SUCCESS, data_string)
             except ValueError:
                 # Likely an empty response body
-                return FunctionResponse("SUCCESS", "Action completed successfully")
+                return FunctionResponse(Status.SUCCESSS, "Action completed successfully")
         else:
             # Handle error responses
             error_msg = f"Error {response.status_code}: {response.text}"
-            return FunctionResponse("FAILURE", error_msg)
+            return FunctionResponse(Status.FAILURE, error_msg)
 
     def get_inventory(self) -> FunctionResponse:
         url = f"{self.base_url}/inventory"
@@ -60,10 +60,10 @@ class InventoryClient(Inventory):
             return self.map_to_function_response(response)
         except requests.exceptions.RequestException as err:  # Catch all request errors
             error_msg = f"Request error: {err}"
-            return FunctionResponse("FAILURE", error_msg)
+            return FunctionResponse(Status.FAILURE, error_msg)
         except Exception as err:  # Catch other unexpected errors
             error_msg = f"An unexpected error occurred: {err}"
-            return FunctionResponse("FAILURE", error_msg)
+            return FunctionResponse(Status.FAILURE, error_msg)
 
 
 # Example usage:

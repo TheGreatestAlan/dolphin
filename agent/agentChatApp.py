@@ -4,7 +4,10 @@ import requests
 import os
 import threading
 
-class ChatApp:
+from agent.AgentInterface import AgentInterface
+
+
+class ChatApp(AgentInterface):
     def __init__(self, root):
         self.root = root
         self.root.title("LLM Chat App")
@@ -56,12 +59,12 @@ class ChatApp:
             response.raise_for_status()
             self.append_chat("System", "Message sent to agent.")
             # Start a thread to poll for the agent's response
-            thread = threading.Thread(target=self._poll_for_response)
+            thread = threading.Thread(target=self.poll_for_response)
             thread.start()
         except requests.exceptions.RequestException as e:
             self.append_chat("System", f"Failed to send message: {e}")
 
-    def _poll_for_response(self):
+    def poll_for_response(self):
         while True:
             try:
                 response = requests.get(f"{self.agent_url}/poll_response", params={'session_id': self.session_id})
@@ -99,6 +102,7 @@ class ChatApp:
     def on_closing(self):
         self.end_session()
         self.root.destroy()
+
 
 if __name__ == "__main__":
     root = tk.Tk()

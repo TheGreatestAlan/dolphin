@@ -35,7 +35,7 @@ class ChatHandler:
     def cache_result(self, session_id, content):
         if session_id not in self.result_cache:
             self.result_cache[session_id] = ""
-        self.result_cache[session_id] += "\n" + content
+        self.result_cache[session_id] += "\n" + content.response
 
     def send_message(self, session_id, content):
         if session_id not in self.sessions:
@@ -63,10 +63,10 @@ class ChatHandler:
         session_id = os.urandom(16).hex()
         self.sessions[session_id] = []
         self.save_sessions_to_file()
-        return jsonify({"session_id": session_id})
+        return session_id
 
     def end_session(self, session_id):
         if session_id in self.sessions:
             del self.sessions[session_id]
             self.save_sessions_to_file()
-        return jsonify({"message": "Session ended successfully"})
+        return True

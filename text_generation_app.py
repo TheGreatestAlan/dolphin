@@ -35,4 +35,5 @@ def generate_text():
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5001))  # Use 5001 as the default port if not set in environment variables
+    os.environ['FLASK_SKIP_DOTENV'] = 'true'  # Add this line to bypass dotenv loading
     app.run(host='0.0.0.0', port=port)

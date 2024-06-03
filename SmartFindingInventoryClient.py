@@ -12,19 +12,19 @@ class SmartFindingInventoryClient(Inventory):
 
     def map_to_function_response(self, response):
         if response is None:
-            return FunctionResponse("FAILURE", "An error occurred")
+            return FunctionResponse(Status.FAILURE, "An error occurred")
         elif 200 <= response.status_code < 300:
             # Successful response (may include 204 No Content)
             try:
                 data = response.json()
-                return FunctionResponse("SUCCESS", data)
+                return FunctionResponse(Status.SUCCESS, data)
             except ValueError:
                 # Likely an empty response body
-                return FunctionResponse("SUCCESS", "Action completed successfully")
+                return FunctionResponse(Status.SUCCESS, "Action completed successfully")
         else:
             # Handle error responses
             error_msg = f"Error {response.status_code}: {response.text}"
-            return FunctionResponse("FAILURE", error_msg)
+            return FunctionResponse(Status.FAILURE, error_msg)
 
     def get_inventory(self) -> FunctionResponse:
         function_res = self.inventory.get_inventory()

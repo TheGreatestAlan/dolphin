@@ -1,25 +1,23 @@
-import pyaudio
-from scipy.io.wavfile import write
+import time as tm
+import os
 import numpy as np
+import pyaudio
+import torch
 import tkinter as tk
 from tkinter import scrolledtext
 from threading import Thread
-import os
-import time as tm
-import torch
-import matplotlib.pyplot as plt
-from matplotlib.animation import FuncAnimation
-import itertools
+from scipy.io.wavfile import write
 import queue
 
+from agent.AgentRestClient import AgentRestClient
 from asr.WhisperTranscriber import WhisperTranscriber
 
-# Initialize AudioTranscriber
+# Initialize WhisperTranscriber
 audioTranscriber = WhisperTranscriber()
 
 # Load the Silero VAD model
 model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad', force_reload=True)
-(get_speech_ttimestamps, save_audio, read_audio, VADIterator, collect_chunks) = utils
+(get_speech_timestamps, save_audio, read_audio, VADIterator, collect_chunks) = utils
 
 def validate(model, inputs: torch.Tensor, sr: int):
     with torch.no_grad():
@@ -37,9 +35,6 @@ def int2float(sound):
 class AudioRecorder:
     def __init__(self, fs=16000, output_directory="M:/model_cache/6_2"):
         self.audioTranscriber = WhisperTranscriber()
-        self.server_url = os.getenv('SERVER_URL')
-        self.username = os.getenv("USERNAME")
-        self.password = os.getenv('PASSWORD')
         self.fs = fs
         self.output_directory = os.path.normpath(output_directory)
         self.filename = None
@@ -55,9 +50,21 @@ class AudioRecorder:
         self.audio_queue = queue.Queue()
         self.transcription_queue = queue.Queue()
 
+        # Initialize the AgentRestClient
+        self.agent_client = AgentRestClient(os.environ.get("AGENT_URL", "http://127.0.0.1:5000"))
+        self.session_id = self.start_session()
+
         # Start the transcription thread
         self.transcription_thread = Thread(target=self.process_transcription_queue)
         self.transcription_thread.start()
+
+    def start_session(self):
+        try:
+            session_id = self.agent_client.start_session()
+            print(f"Started session with ID: {session_id}")
+            return session_id
+        except Exception as e:
+            raise RuntimeError(f"Failed to start session with agent: {e}")
 
     def stop(self):
         input("Press Enter to stop the recording:")
@@ -102,6 +109,35 @@ class AudioRecorder:
         print("transcribing")
         transcription = self.audioTranscriber.transcribe_audio(temp_filepath)
         self.audio_queue.put(transcription)
+        self.send_to_agent(transcription)
+
+    def send_to_agent(self, transcription):
+        print("sending transcription to agent")
+        self.append_chat("You", transcription)
+        thread = Thread(target=self._send_to_agent, args=(transcription,))
+        thread.start()
+
+    def _send_to_agent(self, transcription):
+        try:
+            response = self.agent_client.send_prompt(transcription)
+            print(response)
+            self.poll_agent_response()
+        except Exception as e:
+            print(f"Failed to send prompt to agent: {e}")
+
+    def poll_agent_response(self):
+        thread = Thread(target=self._poll_agent_response)
+        thread.start()
+
+    def _poll_agent_response(self):
+        try:
+            while True:
+                response = self.agent_client.poll_response()
+                print(f"Polled response: {response}")
+                self.update_gui(response)
+                break
+        except Exception as e:
+            print(f"Failed to poll response from agent: {e}")
 
     def start_recording(self):
         self.recording = True
@@ -116,34 +152,13 @@ class AudioRecorder:
                         stream_callback=self.audio_callback)
 
         self.continue_recording = True
-
-        fig, ax = plt.subplots()
-        xdata, ydata = [], []
-        ln, = plt.plot([], [], 'b-', animated=True)
-
-        def init():
-            ax.set_xlim(0, 100)
-            ax.set_ylim(0, 1)
-            return ln,
-
-        def update(frame):
-            xdata.append(len(xdata))
-            ydata.append(self.voiced_confidences[-1])
-            ln.set_data(xdata, ydata)
-            if len(xdata) > 100:
-                ax.set_xlim(len(xdata) - 100, len(xdata))
-            return ln,
-
-        ani = FuncAnimation(fig, update, frames=itertools.count, init_func=init, blit=True, save_count=100)
-        plt.show(block=False)
-
         stream.start_stream()
 
         stop_listener = Thread(target=self.stop)
         stop_listener.start()
 
         while self.continue_recording:
-            plt.pause(0.1)
+            tm.sleep(0.1)
             if not self.audio_queue.empty():
                 transcription = self.audio_queue.get()
                 self.update_gui(transcription)
@@ -151,20 +166,29 @@ class AudioRecorder:
         stream.stop_stream()
         stream.close()
         p.terminate()
-        plt.close(fig)
 
         self.recording = False
         if self.current_audio_chunk:
             self.save_detected_voice()
 
+        # End the session when recording stops
+        try:
+            end_response = self.agent_client.end_session()
+            print(end_response)
+        except Exception as e:
+            print(f"Failed to end session with agent: {e}")
+
     def update_gui(self, message):
         self.root.after(0, self._update_gui, message)
 
     def _update_gui(self, message):
+        self.append_chat("Agent", message)
+
+    def append_chat(self, speaker, text):
         self.response_text.config(state=tk.NORMAL)
-        self.response_text.delete(1.0, tk.END)
-        self.response_text.insert(tk.END, message)
+        self.response_text.insert(tk.END, f"{speaker}: {text}\n")
         self.response_text.config(state=tk.DISABLED)
+        self.response_text.yview(tk.END)
 
     def run_gui(self):
         self.root = tk.Tk()
