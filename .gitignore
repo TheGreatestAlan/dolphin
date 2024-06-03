@@ -16,3 +16,5 @@ models/
 *.json
 
 dev/
+submodules/
+venv/
