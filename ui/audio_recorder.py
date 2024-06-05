@@ -33,7 +33,7 @@ def int2float(sound):
 
 
 class AudioRecorder:
-    def __init__(self, fs=16000, output_directory="M:/model_cache/6_2", audio_manager=None, voice_assistant=None, gui=None):
+    def __init__(self, fs=16000, output_directory="M:/model_cache/6_2", audio_manager=None, voice_assistant=None, gui_update_queue=None):
         self.audioTranscriber = WhisperTranscriber()
         self.fs = fs
         self.output_directory = os.path.normpath(output_directory)
@@ -48,14 +48,13 @@ class AudioRecorder:
 
         self.audio_manager = audio_manager
         self.voice_assistant = voice_assistant
-        self.gui = gui
+        self.gui_update_queue = gui_update_queue
         self.record_event = Event()
         self.record_event.set()
 
         # Start the transcription thread
         self.transcription_thread = Thread(target=self.process_transcription_queue)
         self.transcription_thread.start()
-        print("Transcription processor thread started")
 
     def stop(self):
         input("Press Enter to stop the recording:")
@@ -63,24 +62,21 @@ class AudioRecorder:
         self.transcription_queue.put(None)  # Signal the transcription thread to stop
 
     def pause_recording(self):
-        print("Pausing recording...")
         self.record_event.clear()
 
     def resume_recording(self):
-        print("Resuming recording...")
         self.record_event.set()
 
     def audio_callback(self, in_data, frame_count, time_info, status):
         if not self.record_event.is_set():
-            print("Recording paused")
             return (in_data, pyaudio.paContinue)
 
         audio_int16 = np.frombuffer(in_data, np.int16)
         audio_float32 = int2float(audio_int16)
         new_confidence = validate(model, torch.from_numpy(audio_float32).unsqueeze(0), self.fs).item()
 
-        if self.gui:
-            self.gui.update_voice_level_graph(new_confidence)
+        if self.gui_update_queue:
+            self.gui_update_queue.put(new_confidence)
 
         current_time = tm.time()
         if new_confidence > 0.5:  # Voice detected
@@ -100,7 +96,6 @@ class AudioRecorder:
             temp_filepath = os.path.join(self.output_directory, temp_filename)
             write(temp_filepath, self.fs, self.myrecording)
             self.transcription_queue.put(temp_filepath)
-            print(f"Saved detected voice to {temp_filepath}")
 
     def process_transcription_queue(self):
         while True:
@@ -113,7 +108,6 @@ class AudioRecorder:
     def transcribe_in_thread(self, temp_filepath):
         transcription = self.audioTranscriber.transcribe_audio(temp_filepath)
         if transcription.strip():
-            print(f"Transcription result: {transcription}")
             self.voice_assistant.send_to_agent(transcription)
 
     def start_recording(self):
