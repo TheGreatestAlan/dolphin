@@ -1,6 +1,6 @@
 from tts.GTTSHandler import GTTSHandler
 from tts.PyAudioOutput import PyAudioOutput
-from tts.Speach import Speech
+from tts.Speech import Speech
 
 
 class TestSpeech:
