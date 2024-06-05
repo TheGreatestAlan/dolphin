@@ -123,8 +123,9 @@ class AudioRecorder:
 
     def transcribe_in_thread(self, temp_filepath):
         transcription = self.audioTranscriber.transcribe_audio(temp_filepath)
-        self.audio_queue.put(transcription)
-        self.send_to_agent(transcription)
+        if transcription.strip():
+            self.audio_queue.put(transcription)
+            self.send_to_agent(transcription)
 
     def send_to_agent(self, transcription):
         thread = Thread(target=self._send_to_agent, args=(transcription,))
