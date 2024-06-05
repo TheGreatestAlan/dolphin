@@ -10,8 +10,16 @@ class TestSpeech:
         self.speech = Speech(tts_handler=tts_handler, audio_output=audio_output)
 
     def run_test(self):
-        test_text = "TESTING TESTING ONE TWO FOUR"
-        self.speech.speak(test_text)
+        test_texts = [
+            "TESTING TESTING ONE TWO FOUR",
+            "HELLO WORLD",
+            "THIS IS A TEST"
+        ]
+        for text in test_texts:
+            self.speech.speak(text)
+
+        # Wait for the speech processing to complete
+        self.speech.wait_until_done()
 
 if __name__ == "__main__":
     tester = TestSpeech()

@@ -15,15 +15,16 @@ class GTTSHandler(TTSInterface):
         audio_fp = io.BytesIO()
         tts.write_to_fp(audio_fp)
         audio_fp.seek(0)
-        return audio_fp, 'mp3'
+        return audio_fp
 
-    def stream_text_to_speech(self, text_stream: queue.Queue, audio_output):
+    def stream_text_to_speech(self, text_stream: queue.Queue):
         def stream_worker():
             while True:
                 text = text_stream.get()
                 if text is None:  # None is a signal to stop streaming
                     break
-                audio_fp, format = self.text_to_speech(text)
-                audio_output.play_audio(audio_fp, format=format)
+                audio_fp = self.text_to_speech(text)
+                audio_fp.seek(0)
+                yield audio_fp
 
         threading.Thread(target=stream_worker).start()

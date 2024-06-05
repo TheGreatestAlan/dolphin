@@ -7,16 +7,17 @@ from tts.SpeachInterfaces import AudioOutputInterface
 
 
 class PyAudioOutput(AudioOutputInterface):
-    def play_audio(self, audio_fp: io.BytesIO, format: str = 'wav'):
+    def play_audio(self, audio_fp: io.BytesIO):
         audio_fp.seek(0)
-        if format == 'mp3':
+        try:
+            wf = wave.open(audio_fp, 'rb')
+        except wave.Error:
             audio = AudioSegment.from_file(audio_fp, format="mp3")
             wav_fp = io.BytesIO()
             audio.export(wav_fp, format="wav")
             wav_fp.seek(0)
             audio_fp = wav_fp
-
-        wf = wave.open(audio_fp, 'rb')
+            wf = wave.open(audio_fp, 'rb')
 
         p = pyaudio.PyAudio()
         stream = p.open(format=p.get_format_from_width(wf.getsampwidth()),
