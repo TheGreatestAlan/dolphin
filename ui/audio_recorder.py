@@ -12,7 +12,6 @@ import queue
 from agent.AgentRestClient import AgentRestClient
 from asr.WhisperTranscriber import WhisperTranscriber
 
-from tts.GTTSHandler import GTTSHandler
 from tts.PyAudioOutput import PyAudioOutput
 from tts.Speach import Speech
 
@@ -21,7 +20,7 @@ audioTranscriber = WhisperTranscriber()
 
 # Load the Silero VAD model
 model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad', force_reload=True)
-(get_speech_ttimestamps, save_audio, read_audio, VADIterator, collect_chunks) = utils
+(get_speech_timestamps, save_audio, read_audio, VADIterator, collect_chunks) = utils
 
 
 def validate(model, inputs: torch.Tensor, sr: int):
@@ -68,6 +67,7 @@ class AudioRecorder:
         # Start the transcription thread
         self.transcription_thread = Thread(target=self.process_transcription_queue)
         self.transcription_thread.start()
+        print("Transcription processor thread started")
 
     def start_session(self):
         try:
@@ -133,6 +133,7 @@ class AudioRecorder:
     def transcribe_in_thread(self, temp_filepath):
         transcription = self.audioTranscriber.transcribe_audio(temp_filepath)
         if transcription.strip():
+            print(f"Transcription result: {transcription}")
             self.audio_queue.put(transcription)
             self.send_to_agent(transcription)
 
@@ -156,8 +157,10 @@ class AudioRecorder:
             while True:
                 response = self.agent_client.poll_response()
                 if response:
+                    print(f"Agent response: {response}")
                     self.update_chat("Agent", response)
                     if self.speech:
+                        print(f"Speaking response: {response}")
                         self.speech.speak(response)
                     break
         except Exception as e:
@@ -228,6 +231,7 @@ class AudioRecorder:
 
 
 if __name__ == "__main__":
+    from tts.GTTSHandler import GTTSHandler
 
     tts_handler = GTTSHandler(lang='en')
     audio_output = PyAudioOutput()

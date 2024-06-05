@@ -1,7 +1,7 @@
 import queue
 import threading
 
-from tts.SpeachInterfaces import AudioOutputInterface, TTSInterface
+from tts.SpeachInterfaces import TTSInterface, AudioOutputInterface
 
 
 class Speech:
@@ -12,6 +12,7 @@ class Speech:
         self.thread = threading.Thread(target=self._process_queue)
         self.thread.daemon = True
         self.thread.start()
+        print("Speech processor thread started")
 
     def speak(self, text: str):
         print(f"Queueing text: {text}")
