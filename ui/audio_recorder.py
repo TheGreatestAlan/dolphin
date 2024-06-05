@@ -12,17 +12,23 @@ import queue
 from agent.AgentRestClient import AgentRestClient
 from asr.WhisperTranscriber import WhisperTranscriber
 
+from tts.GTTSHandler import GTTSHandler
+from tts.PyAudioOutput import PyAudioOutput
+from tts.Speach import Speech
+
 # Initialize WhisperTranscriber
 audioTranscriber = WhisperTranscriber()
 
 # Load the Silero VAD model
 model, utils = torch.hub.load(repo_or_dir='snakers4/silero-vad', model='silero_vad', force_reload=True)
-(get_speech_timestamps, save_audio, read_audio, VADIterator, collect_chunks) = utils
+(get_speech_ttimestamps, save_audio, read_audio, VADIterator, collect_chunks) = utils
+
 
 def validate(model, inputs: torch.Tensor, sr: int):
     with torch.no_grad():
         outs = model(inputs, sr)
     return outs
+
 
 def int2float(sound):
     abs_max = np.abs(sound).max()
@@ -32,8 +38,9 @@ def int2float(sound):
     sound = sound.squeeze()
     return sound
 
+
 class AudioRecorder:
-    def __init__(self, fs=16000, output_directory="M:/model_cache/6_2"):
+    def __init__(self, fs=16000, output_directory="M:/model_cache/6_2", speech: Speech = None):
         self.audioTranscriber = WhisperTranscriber()
         self.fs = fs
         self.output_directory = os.path.normpath(output_directory)
@@ -51,6 +58,8 @@ class AudioRecorder:
         self.transcription_queue = queue.Queue()
         self.voice_level_canvas = None
         self.max_confidence = 0.5  # Initial max confidence for scaling
+
+        self.speech = speech
 
         # Initialize the AgentRestClient
         self.agent_client = AgentRestClient(os.environ.get("AGENT_URL", "http://127.0.0.1:5000"))
@@ -148,6 +157,8 @@ class AudioRecorder:
                 response = self.agent_client.poll_response()
                 if response:
                     self.update_chat("Agent", response)
+                    if self.speech:
+                        self.speech.speak(response)
                     break
         except Exception as e:
             print(f"Failed to poll response from agent: {e}")
@@ -215,6 +226,12 @@ class AudioRecorder:
 
         self.root.mainloop()
 
+
 if __name__ == "__main__":
-    recorder = AudioRecorder()
+
+    tts_handler = GTTSHandler(lang='en')
+    audio_output = PyAudioOutput()
+    speech = Speech(tts_handler=tts_handler, audio_output=audio_output)
+
+    recorder = AudioRecorder(speech=speech)
     recorder.run_gui()
