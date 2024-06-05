@@ -1,13 +1,14 @@
 from tts.GTTSHandler import GTTSHandler
 from tts.PyAudioOutput import PyAudioOutput
 from tts.Speech import Speech
+from ui.AudioManager import AudioManager
 
 
 class TestSpeech:
     def __init__(self):
         tts_handler = GTTSHandler(lang='en')
         audio_output = PyAudioOutput()
-        self.speech = Speech(tts_handler=tts_handler, audio_output=audio_output)
+        self.speech = Speech(tts_handler=tts_handler, audio_output=audio_output, audio_manager=AudioManager())
 
     def run_test(self):
         test_texts = [

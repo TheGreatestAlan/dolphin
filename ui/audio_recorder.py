@@ -34,6 +34,7 @@ def int2float(sound):
 
 class AudioRecorder:
     def __init__(self, fs=16000, output_directory="M:/model_cache/6_2", audio_manager=None, voice_assistant=None, gui_update_queue=None):
+        print("Initializing AudioRecorder...")
         self.audioTranscriber = WhisperTranscriber()
         self.fs = fs
         self.output_directory = os.path.normpath(output_directory)
@@ -49,26 +50,20 @@ class AudioRecorder:
         self.audio_manager = audio_manager
         self.voice_assistant = voice_assistant
         self.gui_update_queue = gui_update_queue
-        self.record_event = Event()
-        self.record_event.set()
 
         # Start the transcription thread
         self.transcription_thread = Thread(target=self.process_transcription_queue)
         self.transcription_thread.start()
+        print("Transcription processor thread started")
 
     def stop(self):
         input("Press Enter to stop the recording:")
         self.continue_recording = False
         self.transcription_queue.put(None)  # Signal the transcription thread to stop
 
-    def pause_recording(self):
-        self.record_event.clear()
-
-    def resume_recording(self):
-        self.record_event.set()
-
     def audio_callback(self, in_data, frame_count, time_info, status):
-        if not self.record_event.is_set():
+        if not self.audio_manager.record_event.is_set():
+            print("Recording paused by AudioManager")
             return (in_data, pyaudio.paContinue)
 
         audio_int16 = np.frombuffer(in_data, np.int16)
@@ -90,12 +85,14 @@ class AudioRecorder:
 
     def save_detected_voice(self):
         if self.current_audio_chunk:
+            print("Saving detected voice chunk...")
             self.myrecording = np.concatenate(self.current_audio_chunk)
             self.current_audio_chunk = []
             temp_filename = f"temp_detected_voice_{int(tm.time())}.wav"
             temp_filepath = os.path.join(self.output_directory, temp_filename)
             write(temp_filepath, self.fs, self.myrecording)
             self.transcription_queue.put(temp_filepath)
+            print(f"Saved detected voice to {temp_filepath}")
 
     def process_transcription_queue(self):
         while True:
@@ -106,15 +103,17 @@ class AudioRecorder:
             os.remove(temp_filepath)  # Clean up temporary file
 
     def transcribe_in_thread(self, temp_filepath):
+        print(f"Transcribing file: {temp_filepath}")
         transcription = self.audioTranscriber.transcribe_audio(temp_filepath)
         if transcription.strip():
+            print(f"Transcription result: {transcription}")
             self.voice_assistant.send_to_agent(transcription)
 
     def start_recording(self):
+        print("Starting recording...")
         self.recording = True
         self.myrecording = None
 
-        self.audio_manager.acquire_audio()
         p = pyaudio.PyAudio()
         stream = p.open(format=pyaudio.paInt16,
                         channels=1,
@@ -130,7 +129,8 @@ class AudioRecorder:
         stop_listener.start()
 
         while self.continue_recording:
-            tm.sleep(0.1)
+            if self.audio_manager.record_event.is_set():
+                tm.sleep(0.1)
 
         stream.stop_stream()
         stream.close()
