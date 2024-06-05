@@ -1,3 +1,4 @@
+import time
 import time as tm
 import os
 import numpy as np
@@ -5,7 +6,7 @@ import pyaudio
 import torch
 import tkinter as tk
 from tkinter import scrolledtext
-from threading import Thread
+from threading import Thread, Event
 from scipy.io.wavfile import write
 import queue
 
@@ -39,7 +40,7 @@ def int2float(sound):
 
 
 class AudioRecorder:
-    def __init__(self, fs=16000, output_directory="M:/model_cache/6_2", speech: Speech = None):
+    def __init__(self, fs=16000, output_directory="M:/model_cache/6_2", speech: Speech = None, audio_manager=None):
         self.audioTranscriber = WhisperTranscriber()
         self.fs = fs
         self.output_directory = os.path.normpath(output_directory)
@@ -59,6 +60,9 @@ class AudioRecorder:
         self.max_confidence = 0.5  # Initial max confidence for scaling
 
         self.speech = speech
+        self.audio_manager = audio_manager
+        self.record_event = Event()
+        self.record_event.set()
 
         # Initialize the AgentRestClient
         self.agent_client = AgentRestClient(os.environ.get("AGENT_URL", "http://127.0.0.1:5000"))
@@ -82,7 +86,19 @@ class AudioRecorder:
         self.continue_recording = False
         self.transcription_queue.put(None)  # Signal the transcription thread to stop
 
+    def pause_recording(self):
+        print("Pausing recording...")
+        self.record_event.clear()
+
+    def resume_recording(self):
+        print("Resuming recording...")
+        self.record_event.set()
+
     def audio_callback(self, in_data, frame_count, time_info, status):
+        if not self.record_event.is_set():
+            print("Recording paused")
+            return (in_data, pyaudio.paContinue)
+
         audio_int16 = np.frombuffer(in_data, np.int16)
         audio_float32 = int2float(audio_int16)
         new_confidence = validate(model, torch.from_numpy(audio_float32).unsqueeze(0), self.fs).item()
@@ -170,6 +186,7 @@ class AudioRecorder:
         self.recording = True
         self.myrecording = None
 
+        self.audio_manager.acquire_audio()
         p = pyaudio.PyAudio()
         stream = p.open(format=pyaudio.paInt16,
                         channels=1,
@@ -193,6 +210,7 @@ class AudioRecorder:
         stream.stop_stream()
         stream.close()
         p.terminate()
+        self.audio_manager.release_audio()
 
         self.recording = False
         if self.current_audio_chunk:
@@ -228,14 +246,3 @@ class AudioRecorder:
         self.record_thread.start()
 
         self.root.mainloop()
-
-
-if __name__ == "__main__":
-    from tts.GTTSHandler import GTTSHandler
-
-    tts_handler = GTTSHandler(lang='en')
-    audio_output = PyAudioOutput()
-    speech = Speech(tts_handler=tts_handler, audio_output=audio_output)
-
-    recorder = AudioRecorder(speech=speech)
-    recorder.run_gui()

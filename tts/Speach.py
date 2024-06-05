@@ -5,9 +5,10 @@ from tts.SpeachInterfaces import TTSInterface, AudioOutputInterface
 
 
 class Speech:
-    def __init__(self, tts_handler: TTSInterface, audio_output: AudioOutputInterface):
+    def __init__(self, tts_handler: TTSInterface, audio_output: AudioOutputInterface, audio_manager=None):
         self.tts_handler = tts_handler
         self.audio_output = audio_output
+        self.audio_manager = audio_manager
         self.text_queue = queue.Queue()
         self.thread = threading.Thread(target=self._process_queue)
         self.thread.daemon = True
@@ -29,7 +30,11 @@ class Speech:
                 break
             print(f"Processing text: {text}")
             audio_fp = self.tts_handler.text_to_speech(text)
+            if self.audio_manager:
+                self.audio_manager.acquire_audio()
             self.audio_output.play_audio(audio_fp)
+            if self.audio_manager:
+                self.audio_manager.release_audio()
 
     def wait_until_done(self):
         self.text_queue.put(None)

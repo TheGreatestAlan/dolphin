@@ -11,7 +11,9 @@ class PyAudioOutput(AudioOutputInterface):
         audio_fp.seek(0)
         try:
             wf = wave.open(audio_fp, 'rb')
+            print("Playing WAV audio")
         except wave.Error:
+            print("Converting MP3 to WAV")
             audio = AudioSegment.from_file(audio_fp, format="mp3")
             wav_fp = io.BytesIO()
             audio.export(wav_fp, format="wav")
@@ -34,3 +36,4 @@ class PyAudioOutput(AudioOutputInterface):
         stream.stop_stream()
         stream.close()
         p.terminate()
+        print("Audio playback finished")
