@@ -63,7 +63,6 @@ class AudioRecorder:
 
     def audio_callback(self, in_data, frames, time_info, status):
         if not self.audio_manager.record_event.is_set():
-            print("Recording paused by AudioManager")
             return
 
         audio_int16 = in_data
