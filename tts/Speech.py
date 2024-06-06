@@ -1,6 +1,5 @@
-import threading
 import queue
-import time
+import threading
 
 from tts.SpeachInterfaces import TTSInterface, AudioOutputInterface
 from ui.AudioManager import AudioManager
@@ -14,9 +13,6 @@ class Speech:
         self.thread = threading.Thread(target=self._process_queue)
         self.thread.daemon = True
         self.thread.start()
-        self.periodic_thread = threading.Thread(target=self._speak_periodically)
-        self.periodic_thread.daemon = True
-        self.periodic_thread.start()
 
     def speak(self, text: str):
         print(f"Queueing text: {text}")
@@ -36,11 +32,6 @@ class Speech:
             audio_fp = self.tts_handler.text_to_speech(text)
             self.audio_output.play_audio(audio_fp)
             self.audio_manager.release_audio()
-
-    def _speak_periodically(self):
-        while True:
-            time.sleep(5)
-            self.speak("This is a periodic message every 5 seconds.")
 
     def wait_until_done(self):
         self.text_queue.put(None)

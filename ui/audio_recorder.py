@@ -1,7 +1,7 @@
 import time as tm
 import os
 import numpy as np
-import pyaudio
+import sounddevice as sd
 import torch
 from threading import Thread, Event
 from scipy.io.wavfile import write
@@ -61,12 +61,12 @@ class AudioRecorder:
         self.continue_recording = False
         self.transcription_queue.put(None)  # Signal the transcription thread to stop
 
-    def audio_callback(self, in_data, frame_count, time_info, status):
+    def audio_callback(self, in_data, frames, time_info, status):
         if not self.audio_manager.record_event.is_set():
             print("Recording paused by AudioManager")
-            return (in_data, pyaudio.paContinue)
+            return
 
-        audio_int16 = np.frombuffer(in_data, np.int16)
+        audio_int16 = in_data
         audio_float32 = int2float(audio_int16)
         new_confidence = validate(model, torch.from_numpy(audio_float32).unsqueeze(0), self.fs).item()
 
@@ -80,8 +80,6 @@ class AudioRecorder:
         else:
             if self.current_audio_chunk and (current_time - self.last_voice_time) > 1.0:
                 self.save_detected_voice()
-
-        return (in_data, pyaudio.paContinue)
 
     def save_detected_voice(self):
         if self.current_audio_chunk:
@@ -100,7 +98,7 @@ class AudioRecorder:
             if temp_filepath is None:
                 break
             self.transcribe_in_thread(temp_filepath)
-            os.remove(temp_filepath)  # Clean up temporary file
+            os.remove(temp_filepath)
 
     def transcribe_in_thread(self, temp_filepath):
         print(f"Transcribing file: {temp_filepath}")
@@ -114,29 +112,26 @@ class AudioRecorder:
         self.recording = True
         self.myrecording = None
 
-        p = pyaudio.PyAudio()
-        stream = p.open(format=pyaudio.paInt16,
-                        channels=1,
-                        rate=self.fs,
-                        input=True,
-                        frames_per_buffer=1024,
-                        stream_callback=self.audio_callback)
-
         self.continue_recording = True
-        stream.start_stream()
+        self.audio_manager.record_event.set()
 
-        stop_listener = Thread(target=self.stop)
-        stop_listener.start()
+        def audio_callback_for_sd(indata, frames, time, status):
+            self.audio_callback(indata.copy(), frames, time, status)
 
-        while self.continue_recording:
-            if self.audio_manager.record_event.is_set():
+        with sd.InputStream(
+                samplerate=self.fs,
+                channels=1,
+                dtype='int16',
+                callback=audio_callback_for_sd,
+                blocksize=int(self.fs * 0.05)) as stream:
+            while self.continue_recording:
                 tm.sleep(0.1)
+                if not self.audio_manager.record_event.is_set():
+                    print("Recording paused by AudioManager")
 
-        stream.stop_stream()
-        stream.close()
-        p.terminate()
         self.audio_manager.release_audio()
 
         self.recording = False
         if self.current_audio_chunk:
             self.save_detected_voice()
+

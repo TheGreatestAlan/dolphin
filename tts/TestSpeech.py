@@ -3,7 +3,6 @@ from tts.PyAudioOutput import PyAudioOutput
 from tts.Speech import Speech
 from ui.AudioManager import AudioManager
 
-
 class TestSpeech:
     def __init__(self):
         tts_handler = GTTSHandler(lang='en')
