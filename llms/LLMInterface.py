@@ -4,3 +4,6 @@ class LLMInterface(ABC):
     @abstractmethod
     def generate_response(self, prompt, system_message):
         pass
+
+    def stream_response(self, prompt, system_message):
+        pass

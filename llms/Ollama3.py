@@ -1,9 +1,7 @@
 import os
-
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from llms.LLMInterface import LLMInterface
-
 
 class Ollama3LLM(LLMInterface):
     def __init__(self):
@@ -31,7 +29,6 @@ class Ollama3LLM(LLMInterface):
         input_ids = self.tokenizer.encode(prompt, return_tensors='pt').to(self.device)
         attention_mask = input_ids.ne(self.pad_token_id).to(self.device)
 
-
         with torch.no_grad():
             response_ids = self.model.generate(
                 input_ids,
@@ -46,8 +43,8 @@ class Ollama3LLM(LLMInterface):
 
         # Clean up the response by removing "system", "assistant" labels, and any special tokens
         # Find the positions of the tags
-        start_tag = "<|end_header_id|>"
-        end_tag = "<|eot_id|>"
+        start_tag = ""
+        end_tag = ""
 
         # Extract the substring between the tags
         start_index = generated_text.rfind(start_tag)
@@ -63,11 +60,37 @@ class Ollama3LLM(LLMInterface):
 
         return response
 
+    def stream_response(self, prompt, system_message):
+        input_ids = self.tokenizer.encode(prompt, return_tensors='pt').to(self.device)
+        attention_mask = input_ids.ne(self.pad_token_id).to(self.device)
+
+        response_ids = self.model.generate(
+            input_ids,
+            attention_mask=attention_mask,
+            max_length=1500,  # Adjust max length if the input is longer
+            pad_token_id=self.pad_token_id,
+            temperature=0.7,  # Adjust temperature for more coherent results
+            top_p=0.9,
+            do_sample=True,
+            num_return_sequences=1,
+            output_scores=True,
+            return_dict_in_generate=True
+        )
+
+        generated_text = self.tokenizer.decode(response_ids.sequences[0], skip_special_tokens=False)
+        response_parts = generated_text.split(" ")  # Split response into parts
+
+        for part in response_parts:
+            yield part
 
 # Example usage
 if __name__ == "__main__":
     ollama3 = Ollama3LLM()
     prompt = "In this list, where is the turmeric? 1: turmeric, parsley 2: pencils 3: phone 4: food"
     system_message = "You are an inventory scanning guy."
-    response = ollama3.generate_response(prompt, system_message)
-    print(response)
+    print("Generated Response:")
+    print(ollama3.generate_response(prompt, system_message))
+
+    print("\nStreaming Response:")
+    for part in ollama3.stream_response(prompt, system_message):
+        print(part, end=" ")

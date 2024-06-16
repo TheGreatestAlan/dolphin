@@ -19,3 +19,15 @@ class RestLLM(LLMInterface):
         print("RESPONSE::\n")
         print(response_json)
         return response_json['response']
+
+    def stream_response(self, prompt, system_message):
+        data = {
+            "prompt": prompt,
+            "system_message": system_message,
+        }
+        headers = {"Content-Type": "application/json"}
+        response = requests.post(f"{self.url}/generate", headers=headers, json=data, stream=True)
+        response.raise_for_status()
+        for line in response.iter_lines():
+            if line:
+                yield line.decode('utf-8')
