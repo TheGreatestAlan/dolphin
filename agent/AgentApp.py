@@ -7,14 +7,23 @@ from SmartFindingInventoryClient import SmartFindingInventoryClient
 from functiongenerator.InventoryFunctionGenerator import InventoryFunctionGenerator
 from integrations.InventoryRestClient import InventoryClient
 from llms.RestLLM import RestLLM
+from llms.ChatGPT4 import ChatGPT4  # Import the ChatGPT4 class
 from FunctionMapper import FunctionMapper
 from integrations.ChatHandler import ChatHandler
 
 app = Flask(__name__)
 
-# Initialize the RestLLM instance with the appropriate URL
-llm_url: str = os.getenv('LLM_URL', 'http://127.0.0.1:5002')
-llm_client = RestLLM(llm_url)
+# Determine which LLM client to use based on environment variable
+llm_type = os.getenv('LLM_TYPE', 'RestLLM')  # Default to 'RestLLM' if not specified
+llm_url = os.getenv('LLM_URL', 'http://127.0.0.1:5002')
+
+if llm_type == 'RestLLM':
+    llm_client = RestLLM(llm_url)
+elif llm_type == 'ChatGPT':
+    llm_client = ChatGPT4()  # Assuming ChatGPT4 does not require a URL
+else:
+    raise ValueError(f"Unsupported LLM_TYPE: {llm_type}")
+
 sessions_file_path = 'sessions.json'
 MAX_NESTING_LEVEL = 3
 

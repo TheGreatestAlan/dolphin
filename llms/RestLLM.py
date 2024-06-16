@@ -1,4 +1,5 @@
 import requests
+import json
 from llms.LLMInterface import LLMInterface
 
 class RestLLM(LLMInterface):
@@ -26,8 +27,17 @@ class RestLLM(LLMInterface):
             "system_message": system_message,
         }
         headers = {"Content-Type": "application/json"}
-        response = requests.post(f"{self.url}/generate", headers=headers, json=data, stream=True)
+        response = requests.post(f"{self.base_url}/stream", headers=headers, json=data, stream=True)
         response.raise_for_status()
         for line in response.iter_lines():
             if line:
-                yield line.decode('utf-8')
+                decoded_line = line.decode('utf-8')
+                if 'data: ' in decoded_line:
+                    data = decoded_line[len('data: '):]
+                    if data.strip() == "[DONE]":
+                        break
+                    if data:
+                        message = json.loads(data)['choices'][0]['delta']
+                        if 'content' in message:
+                            content_part = message['content']
+                            yield content_part
