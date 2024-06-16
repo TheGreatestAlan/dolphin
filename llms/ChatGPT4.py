@@ -1,6 +1,7 @@
 import os
 import time
 import requests
+import json
 
 from llms.LLMInterface import LLMInterface
 
@@ -33,7 +34,8 @@ class ChatGPT4(LLMInterface):
             "messages": [
                 {"role": "system", "content": system_message},
                 {"role": "user", "content": prompt}
-            ]
+            ],
+            "stream": True  # Request streaming response
         }
         headers = {
             "Authorization": f"Bearer {self.api_key}",
@@ -43,18 +45,21 @@ class ChatGPT4(LLMInterface):
         if response.status_code != 200:
             raise Exception(f"Failed to get valid response: {response.status_code} {response.text}")
 
+        buffer = ""
         for line in response.iter_lines():
             if line:
                 decoded_line = line.decode('utf-8')
-                print(f"Received line: {decoded_line}")  # Debug print statement
                 if 'data: ' in decoded_line:
                     data = decoded_line[len('data: '):]
                     if data.strip() == "[DONE]":
                         break
                     if data:
-                        message = eval(data)['choices'][0]['delta']
+                        message = json.loads(data)['choices'][0]['delta']
                         if 'content' in message:
-                            yield message['content']
+                            content_part = message['content']
+                            buffer += content_part
+                            yield content_part  # Yield each part of the content as it arrives
+        return buffer
 
 
 # Example usage
@@ -65,8 +70,13 @@ if __name__ == "__main__":
 
     try:
         start_time = time.time()
+        response_start_time = None
         for content_part in gpt4.stream_response(prompt, system_message):
-            print(content_part, end="", flush=True)
+            if response_start_time is None:
+                response_start_time = time.time()
+                first_response_time = response_start_time - start_time
+                print(f"\nTime to first response: {first_response_time:.2f} seconds")
+            print(content_part, end="", flush=True)  # Print each part of the content as it arrives
         elapsed_time = time.time() - start_time
         print(f"\nStreaming response time: {elapsed_time:.2f} seconds")
     except Exception as e:
