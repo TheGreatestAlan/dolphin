@@ -59,6 +59,26 @@ class ChatHandler:
         latest_response = self.sessions[session_id][-1]
         return jsonify(latest_response)
 
+
+    def receive_stream_data(self, session_id, data_chunk):
+        if session_id not in self.sessions:
+            self.sessions[session_id] = []
+        self.sessions[session_id].append(data_chunk)
+        self.notify_listeners(session_id, data_chunk)
+
+    def notify_listeners(self, session_id, data):
+        # Assuming SSE implementation for streaming
+        if session_id in self.stream_listeners:
+            listener = self.stream_listeners[session_id]
+            listener.send(data)
+
+    def register_listener(self, session_id, listener):
+        self.stream_listeners[session_id] = listener
+
+    def unregister_listener(self, session_id):
+        if session_id in self.stream_listeners:
+            del self.stream_listeners[session_id]
+
     def start_session(self):
         session_id = os.urandom(16).hex()
         self.sessions[session_id] = []

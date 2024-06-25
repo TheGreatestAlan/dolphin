@@ -1,6 +1,8 @@
 import json
+import time
+
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, Response
 import os
 
 from SmartFindingInventoryClient import SmartFindingInventoryClient
@@ -71,26 +73,42 @@ def readFunctionList(file_path='../prompt/functionList.txt'):
 
 readFunctionList()
 
-def handle_llm_response(generated_text, session_id, nesting_level=0):
+def handle_llm_response(response, session_id, streaming=False, nesting_level=0):
     if nesting_level > MAX_NESTING_LEVEL:
         return jsonify({"error": "Max nesting level reached, aborting to avoid infinite recursion."})
 
     try:
-        try:
-            response_json = json.loads(generated_text)
-        except (ValueError, KeyError, json.JSONDecodeError) as e:
-            response_json = json.loads("{" + generated_text + "}")
+        if streaming:
+            full_response = ''
+            for part in response():
+                full_response += part
+                if part.endswith('[DONE]'):  # Assuming '[END]' is a marker indicating the end of the response
+                    break
+            # Now that we have the full response, we can process it
+            process_response_content(full_response, session_id, nesting_level)
+        else:
+            # Full response handling
+            process_response_content(response, session_id, nesting_level)
+    except Exception as e:
+        return jsonify({"error": str(e)})  # Generic error handling
+
+def process_response_content(generated_text, session_id, nesting_level):
+    if nesting_level > MAX_NESTING_LEVEL:
+        return jsonify({"error": "Max nesting level reached, aborting to avoid infinite recursion."})
+
+    try:
+        response_json = json.loads(generated_text)
         if "action" not in response_json or "self_message" not in response_json:
             raise ValueError("Incorrect response format")
 
+        # Handling actions and potentially recursive operations
         function_response = function_mapper.handle_function_call(response_json, session_id)
         if function_response.get('action_name') == 'send_message':
-            return
+            return  # Exit if the action does not require further processing
 
-        return handle_llm_response(
-            send_message_to_llm(SYSTEM_MESSAGE, None, response_json['self_message'], function_response), session_id,
-            nesting_level + 1
-        )
+        # Recursive call to process further based on the self_message and function response
+        next_chunk = send_message_to_llm(SYSTEM_MESSAGE, None, response_json['self_message'], function_response)
+        return process_response_content(next_chunk, session_id, nesting_level + 1)
 
     except (ValueError, KeyError, json.JSONDecodeError) as e:
         error_response = {
@@ -109,18 +127,19 @@ def handle_llm_response(generated_text, session_id, nesting_level=0):
         )
 
 
-def send_message_to_llm(system_message, user_message, self_message, action_response):
-    prompt_dict = {}
-    if user_message:
-        prompt_dict["user_message"] = user_message
-    if self_message:
-        prompt_dict["self_message"] = self_message
-    if action_response:
-        prompt_dict["action_response"] = action_response
 
+def send_message_to_llm(system_message, user_message, self_message, action_response, streaming=False):
+    prompt_dict = {
+        "user_message": user_message,
+        "self_message": self_message,
+        "action_response": action_response
+    }
     prompt = json.dumps(prompt_dict, indent=4)
-    return llm_client.generate_response(prompt, system_message)
 
+    if streaming:
+        return llm_client.stream_response(prompt, system_message)
+    else:
+        return llm_client.generate_response(prompt, system_message)
 
 @app.route('/start_session', methods=['POST'])
 def start_session():
@@ -160,14 +179,17 @@ def message_agent():
         return jsonify({"error": "Invalid or missing session_id"}), 400
 
     try:
-        generated_text = send_message_to_llm(
+        # Use the streaming option in send_message_to_llm
+        response_stream = send_message_to_llm(
             SYSTEM_MESSAGE + "\n" + FUNCTION_LIST,
             user_message,
             None,
-            None
+            None,
+            streaming=True
         )
-        handle_llm_response(generated_text, session_id)
-        return '', 200
+
+        # Return the streamed response to the client
+        return Response(response_stream(), mimetype='text/event-stream')
     except requests.RequestException as e:
         return jsonify({"error": "Failed to generate text", "details": str(e)}), 500
 
@@ -186,6 +208,50 @@ def poll_response():
     print("LATEST RESPONSE")
     print(jsonify(latest_response))
     return jsonify(latest_response)
+
+
+@app.route('/stream/<session_id>')
+def stream(session_id):
+    def generate():
+        # Initial connection message
+        yield "data: {\"message\": \"Connection established.\"}\n\n"
+        last_index = -1  # Initialize to indicate no messages sent yet
+
+        # Continuously check for new messages
+        while True:
+            # Ensure the session exists and has messages
+            if session_id not in chat_handler.sessions:
+                yield "data: {\"error\": \"Session not found or ended.\"}\n\n"
+                break  # Break the loop if session does not exist or ends
+
+            session_messages = chat_handler.sessions[session_id]
+            # Stream new messages if available
+            while last_index < len(session_messages) - 1:
+                last_index += 1
+                message = session_messages[last_index]
+                yield f"data: {json.dumps(message)}\n\n"
+
+            # Delay next iteration to reduce CPU usage
+            time.sleep(1)
+
+    # Flask response object with the appropriate mimetype for SSE
+    return Response(generate(), mimetype='text/event-stream')
+
+
+@app.route('/receive_data/<session_id>', methods=['POST'])
+def receive_data(session_id):
+    # Ensure that the session exists before attempting to add data
+    if session_id not in chat_handler.sessions:
+        return jsonify({"error": "Session not found"}), 404
+
+    # Read the incoming data chunk
+    data_chunk = request.data.decode('utf-8')  # Decode data assuming it's sent as UTF-8
+
+    # Process the received data through the ChatHandler
+    chat_handler.receive_stream_data(session_id, data_chunk)
+
+    # Optionally, you might want to confirm receipt or provide additional info
+    return jsonify({"status": "Data received", "session_id": session_id})
 
 
 @app.route('/end_session', methods=['DELETE'])
