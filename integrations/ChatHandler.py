@@ -1,15 +1,19 @@
 import json
 import os
+import threading
+import time
+
 from flask import jsonify
 
 from FunctionResponse import FunctionResponse, Status
-
 
 class ChatHandler:
     def __init__(self, sessions, sessions_file_path='sessions.json'):
         self.sessions = sessions
         self.sessions_file_path = sessions_file_path
         self.result_cache = {}
+        self.stream_listeners = {}  # Ensure this is initialized
+
 
     def save_sessions_to_file(self):
         try:
@@ -59,18 +63,19 @@ class ChatHandler:
         latest_response = self.sessions[session_id][-1]
         return jsonify(latest_response)
 
-
     def receive_stream_data(self, session_id, data_chunk):
+        """Process received stream data by appending to session and notifying listeners."""
         if session_id not in self.sessions:
             self.sessions[session_id] = []
-        self.sessions[session_id].append(data_chunk)
+        self.sessions[session_id].append({"message": data_chunk})
         self.notify_listeners(session_id, data_chunk)
 
     def notify_listeners(self, session_id, data):
-        # Assuming SSE implementation for streaming
+        """Notify listeners with the given data."""
         if session_id in self.stream_listeners:
-            listener = self.stream_listeners[session_id]
-            listener.send(data)
+            formatted_data = f"data: {json.dumps({'message': data})}\n\n"
+            for listener in self.stream_listeners[session_id]:
+                listener.send(formatted_data)  # Ensure listener.send handles SSE formatting
 
     def register_listener(self, session_id, listener):
         self.stream_listeners[session_id] = listener
@@ -90,3 +95,39 @@ class ChatHandler:
             del self.sessions[session_id]
             self.save_sessions_to_file()
         return True
+
+    def start_counting(self, session_id):
+        """Starts a background task that sends each count message individually to simulate real-time data generation."""
+
+        def count():
+            # First phase of counting from 1 to 10
+            for i in range(1, 11):
+                self.receive_stream_data(session_id, f"Count: {i}")
+                time.sleep(0.5)  # Sleep for 0.5 seconds between counts
+
+            # Send a done message after the first phase
+            self.receive_stream_data(session_id, "[DONE]")
+
+            # Pause between phases
+            time.sleep(2)  # Optional pause between the two phases
+
+            # Second phase of counting from 11 onwards
+            for i in range(11, 21):
+                self.receive_stream_data(session_id, f"Count: {i}")
+                time.sleep(2)  # Sleep for 2 seconds between counts
+
+            # Send a done message after the second phase
+            self.receive_stream_data(session_id, "[DONE]")
+
+            # Continue counting beyond 20 if necessary
+            count_index = 21
+            while True:  # Or some condition to stop
+                self.receive_stream_data(session_id, f"Count: {count_index}")
+                count_index += 1
+                time.sleep(2)  # Continue with 2 second intervals
+                if count_index % 10 == 0:  # Every ten counts, send a done message
+                    self.receive_stream_data(session_id, "[DONE]")
+
+        thread = threading.Thread(target=count)
+        thread.daemon = True  # Set as a daemon so it won't prevent the program from exiting
+        thread.start()

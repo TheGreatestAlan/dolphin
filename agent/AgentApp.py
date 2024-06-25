@@ -71,7 +71,9 @@ def readFunctionList(file_path='../prompt/functionList.txt'):
     except Exception as e:
         print(f"Error reading system message: {e}")
 
+
 readFunctionList()
+
 
 def handle_llm_response(response, session_id, streaming=False, nesting_level=0):
     if nesting_level > MAX_NESTING_LEVEL:
@@ -91,6 +93,7 @@ def handle_llm_response(response, session_id, streaming=False, nesting_level=0):
             process_response_content(response, session_id, nesting_level)
     except Exception as e:
         return jsonify({"error": str(e)})  # Generic error handling
+
 
 def process_response_content(generated_text, session_id, nesting_level):
     if nesting_level > MAX_NESTING_LEVEL:
@@ -127,7 +130,6 @@ def process_response_content(generated_text, session_id, nesting_level):
         )
 
 
-
 def send_message_to_llm(system_message, user_message, self_message, action_response, streaming=False):
     prompt_dict = {
         "user_message": user_message,
@@ -140,6 +142,7 @@ def send_message_to_llm(system_message, user_message, self_message, action_respo
         return llm_client.stream_response(prompt, system_message)
     else:
         return llm_client.generate_response(prompt, system_message)
+
 
 @app.route('/start_session', methods=['POST'])
 def start_session():
@@ -268,4 +271,3 @@ def end_session():
 if __name__ == '__main__':
     os.environ['FLASK_SKIP_DOTENV'] = 'true'  # Add this line to bypass dotenv loading
     app.run(debug=True, host='127.0.0.1', port=5000, use_reloader=False)
-
