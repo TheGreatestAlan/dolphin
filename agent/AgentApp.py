@@ -81,18 +81,43 @@ def handle_llm_response(response, session_id, streaming=False, nesting_level=0):
 
     try:
         if streaming:
-            full_response = ''
-            for part in response():
-                full_response += part
-                if part.endswith('[DONE]'):  # Assuming '[END]' is a marker indicating the end of the response
-                    break
-            # Now that we have the full response, we can process it
-            process_response_content(full_response, session_id, nesting_level)
+            # Call the new method to handle streaming of immediate_response
+            stream_immediate_response(response, session_id)
         else:
-            # Full response handling
-            process_response_content(response, session_id, nesting_level)
+            # Full response handling for non-streaming responses
+            full_response = ''.join(response())
+            process_response_content(full_response, session_id, nesting_level)
+
     except Exception as e:
         return jsonify({"error": str(e)})  # Generic error handling
+
+
+def stream_immediate_response(response_generator, session_id):
+    buffer = ""
+    parsing_content = False
+
+    for chunk in response_generator():
+        buffer += chunk
+
+        if not parsing_content:
+            # Look for the start of "immediate_response"
+            immediate_start = buffer.find('"immediate_response": {')
+            if immediate_start != -1:
+                # Start buffering from this point
+                buffer = buffer[immediate_start:]
+                parsing_content = True
+
+        if parsing_content:
+            # Check for the "content" within "immediate_response"
+            content_start = buffer.find('"content": "')
+            content_end = buffer.find('",', content_start)
+            if content_start != -1 and content_end != -1:
+                content_start += len('"content": "')
+                content_buffer = buffer[content_start:content_end]
+                # Stream the content found
+                chat_handler.receive_stream_data(session_id, content_buffer)
+                buffer = ""  # Reset buffer after handling
+                break  # Optionally break after handling or continue if expecting more data
 
 
 def process_response_content(generated_text, session_id, nesting_level):

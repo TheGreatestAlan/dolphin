@@ -84,9 +84,11 @@ If the input contains a user_message:
 
 json
 {
-  "response": "request_acknowledgement",
-  "parameters": {
-    "content": "Got it! I'm working on that for you."
+  "immediate_response": {
+    "name":"request_acknowledgement",
+    "parameters": {
+        "content": "Got it! I'm working on that for you."
+    }
   },
   "self_message": {
     "overarching_task": "The user has made a request. My task is to acknowledge and start working on it.",
@@ -122,12 +124,13 @@ Example of a Valid Response with User Message:
 
 json
 {
-  "response": {
-    "name": "request_acknowledgement",
-    "parameters": {
-        "content": "Got it! I'm working on that for you."
-    }
-  },
+  {
+    "immediate_response": {
+        "name": "request_acknowledgement",
+        "parameters": {
+            "content": "Got it! I'm working on that for you."
+        }
+    },
   "self_message": {
     "overarching_task": "The user has made a request. My task is to acknowledge and start working on it.",
     "step_by_step_approach": "1. Acknowledge the user's request. 2. Plan the necessary actions. 3. Execute the plan.",
@@ -148,7 +151,7 @@ Example of a Valid Response without User Message:
 
 json
 {
-  "response": {
+  "immediate_response": {
     "name": "send_message",
     "parameters": {
       "content": "Hello there! How can I assist you today?"
