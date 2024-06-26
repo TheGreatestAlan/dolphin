@@ -72,8 +72,19 @@ class ChatHandler:
         """Process received stream data by appending to session and notifying listeners."""
         if session_id not in self.sessions:
             self.sessions[session_id] = []
-        self.sessions[session_id].append({"message": data_chunk})
-        self.context_manager.add_to_context(session_id, data_chunk)  # Add to context
+
+        # Identify start and end markers for the streamed message
+        if "[STREAM_START]" in data_chunk:
+            self.stream_buffer = ""
+
+        if "[STREAM_END]" in data_chunk:
+            self.stream_buffer += data_chunk.replace("[STREAM_END]", "")
+            self.sessions[session_id].append({"message": self.stream_buffer})
+            self.context_manager.add_to_context(session_id, self.stream_buffer)  # Add to context
+            self.stream_buffer = None  # Clear buffer after processing
+        else:
+            self.stream_buffer += data_chunk  # Accumulate streamed data
+
         self.notify_listeners(session_id, data_chunk)
 
     def notify_listeners(self, session_id, data):
