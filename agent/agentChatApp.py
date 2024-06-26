@@ -79,11 +79,13 @@ class ChatApp(AgentInterface):
                             message = data.get('message')
 
                             if message == "[DONE]":
-                                self.append_chat("Agent", current_message)  # Display the complete message
+                                self.append_chat("Agent", current_message,
+                                                 clear_partial=True)  # Commit the complete message
                                 current_message = ""  # Clear the current message after displaying
                             else:
                                 current_message += message  # Append new part to the current message
-                                self.update_chat_display("Agent", current_message)  # Update GUI with the current message
+                                self.update_chat_display("Agent",
+                                                         current_message)  # Update GUI with the current message
 
             except requests.exceptions.RequestException as e:
                 self.append_chat("System", f"Failed to connect to stream: {e}")
@@ -97,13 +99,13 @@ class ChatApp(AgentInterface):
             self.chat_window.config(state='normal')
             lines = self.chat_window.get("1.0", tk.END).split("\n")
 
-            # Check if the last line starts with "Agent:"
+            # Find the last line with "Agent:" and remove it
             if lines and any(line.startswith("Agent:") for line in lines):
-                # Find the last line with "Agent:"
                 for i in range(len(lines) - 1, -1, -1):
                     if lines[i].startswith("Agent:"):
                         lines.pop(i)
                         break
+
                 # Re-insert the lines after removing the last "Agent:" line
                 self.chat_window.delete("1.0", tk.END)
                 self.chat_window.insert(tk.END, "\n".join(lines).strip() + "\n")
@@ -115,9 +117,23 @@ class ChatApp(AgentInterface):
 
         self.root.after(0, update)
 
-    def append_chat(self, speaker, text, newline=True):
+    def append_chat(self, speaker, text, newline=True, clear_partial=False):
         def append():
             self.chat_window.config(state='normal')
+
+            if clear_partial:
+                lines = self.chat_window.get("1.0", tk.END).split("\n")
+                # Find the last line with "Agent:" and remove it
+                if lines and any(line.startswith("Agent:") for line in lines):
+                    for i in range(len(lines) - 1, -1, -1):
+                        if lines[i].startswith("Agent:"):
+                            lines.pop(i)
+                            break
+
+                    # Re-insert the lines after removing the last "Agent:" line
+                    self.chat_window.delete("1.0", tk.END)
+                    self.chat_window.insert(tk.END, "\n".join(lines).strip() + "\n")
+
             entry = f"{speaker}: {text}"
             if newline:
                 entry += "\n"
