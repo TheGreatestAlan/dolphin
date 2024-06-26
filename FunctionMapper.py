@@ -84,7 +84,7 @@ class FunctionMapper:
             response = action_mapping[action_name](parameters)
 
             if show_results_to_user:
-                message_id = str(uuid.uuid5())
+                message_id = str(uuid.uuid4())
                 self.chat_handler.receive_stream_data(session_id, response.response, message_id)
                 self.chat_handler.receive_stream_data(session_id, "[DONE]", message_id)
 

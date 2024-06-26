@@ -1,7 +1,8 @@
 import json
 import os
+import time
 
-from flask import jsonify
+from flask import jsonify, Response
 from langchain.memory import ConversationBufferMemory
 from langchain.schema import HumanMessage, AIMessage
 
@@ -66,10 +67,13 @@ class ChatHandler:
             full_content += f"\nResult: {self.result_cache[session_id]}"
             del self.result_cache[session_id]
 
-        self.sessions[session_id].append({"role": role, "message": full_content})
-        self.save_sessions_to_file()
-        print(f"Sending message to user: {full_content}")
-        return FunctionResponse(Status.SUCCESS, "completed")
+        if full_content.strip():
+            self.sessions[session_id].append({"role": role, "message": full_content})
+            self.save_sessions_to_file()
+            print(f"Sending message to user: {full_content}")
+            return FunctionResponse(Status.SUCCESS, "completed")
+        else:
+            print("Ignored empty message.")
 
     def poll_response(self, session_id):
         if len(self.sessions.get(session_id, [])) == 0:
@@ -78,7 +82,33 @@ class ChatHandler:
         latest_response = self.sessions[session_id][-1]
         return jsonify(latest_response)
 
-    def receive_stream_data(self, session_id, data_chunk, message_id, role="AI"):
+    def listen_to_stream(self, session_id):
+        """Continuously listen and stream data for a given session."""
+
+        def generate():
+            yield "data: {\"message\": \"Connection established.\"}\n\n"
+            last_index = -1  # Initialize to indicate no messages sent yet
+
+            while True:
+                # Stream from the completed messages
+                if session_id in self.sessions:
+                    session_messages = self.sessions[session_id]
+                    while last_index < len(session_messages) - 1:
+                        last_index += 1
+                        message = session_messages[last_index]
+                        yield f"data: {json.dumps(message)}\n\n"
+
+                # Stream live data from the buffer
+                if session_id in self.temp_buffers:
+                    buffer = self.temp_buffers[session_id]
+                    if buffer:
+                        yield f"data: {json.dumps({'message': buffer})}\n\n"
+
+                time.sleep(1)
+
+        return Response(generate(), mimetype='text/event-stream')
+
+    def receive_stream_data(self, session_id, data_chunk,message_id, role="AI"):
         """Process received stream data by appending to session and notifying listeners."""
         if session_id not in self.sessions:
             self.sessions[session_id] = []
@@ -99,23 +129,25 @@ class ChatHandler:
         self.notify_listeners(session_id, data_chunk)
 
     def finalize_message(self, session_id, message, role):
-        if message is None or message == "":
-            return
         """Finalize the message and update the context."""
-        if session_id in self.memories:
-            if role == "Human":
-                self.memories[session_id].save_context({"input": message}, {"output": ""})
-            elif role == "AI":
-                self.memories[session_id].save_context({"input": ""}, {"output": message})
+        if message:
+            if session_id in self.memories:
+                if role == "Human":
+                    self.memories[session_id].save_context({"input": message}, {"output": ""})
+                elif role == "AI":
+                    self.memories[session_id].save_context({"input": ""}, {"output": message})
 
     def store_human_context(self, session_id, message):
         """Store a human message in the session context from an external source."""
         if session_id not in self.sessions:
             self.sessions[session_id] = []
 
-        self.sessions[session_id].append({"role": "Human", "message": message})
-        self.finalize_message(session_id, message, "Human")
-        self.save_sessions_to_file()
+        if message.strip():
+            self.sessions[session_id].append({"role": "Human", "message": message})
+            self.finalize_message(session_id, message, "Human")
+            self.save_sessions_to_file()
+        else:
+            print("Ignored empty human message.")
 
     def get_context(self, session_id):
         """Retrieve the message context for a given session."""

@@ -34,8 +34,7 @@ MAX_NESTING_LEVEL = 3
 rest_inventory_client = InventoryClient(os.environ.get("ORGANIZER_SERVER_URL"))
 smart_finding_inventory_client = SmartFindingInventoryClient(rest_inventory_client, llm_client)
 function_generator = InventoryFunctionGenerator(llm_client)
-sessions = {}
-chat_handler = ChatHandler(sessions, sessions_file_path)
+chat_handler = ChatHandler(sessions_file_path)
 function_mapper = FunctionMapper(smart_finding_inventory_client, function_generator, chat_handler)
 
 # Ensure the system message is read at startup
@@ -306,49 +305,7 @@ def poll_response():
 
 @app.route('/stream/<session_id>')
 def stream(session_id):
-    def generate():
-        # Initial connection message
-        yield "data: {\"message\": \"Connection established.\"}\n\n"
-        last_index = -1  # Initialize to indicate no messages sent yet
-
-        # Continuously check for new messages
-        while True:
-            # Ensure the session exists and has messages
-            if session_id not in chat_handler.sessions:
-                yield "data: {\"error\": \"Session not found or ended.\"}\n\n"
-                break  # Break the loop if session does not exist or ends
-
-            session_messages = chat_handler.sessions[session_id]
-            # Stream new messages if available
-            while last_index < len(session_messages) - 1:
-                last_index += 1
-                message = session_messages[last_index]
-                yield f"data: {json.dumps(message)}\n\n"
-
-            # Delay next iteration to reduce CPU usage
-            time.sleep(1)
-
-    # Flask response object with the appropriate mimetype for SSE
-    return Response(generate(), mimetype='text/event-stream')
-
-
-@app.route('/receive_data/<session_id>', methods=['POST'])
-def receive_data(session_id):
-    # Ensure that the session exists before attempting to add data
-    if session_id not in chat_handler.sessions:
-        return jsonify({"error": "Session not found"}), 404
-
-    # Read the incoming data chunk
-
-    data_chunk = request.data.decode('utf-8')  # Decode data assuming it's sent as UTF-8
-
-    message_id = str(uuid.uuid4())
-    # Process the received data through the ChatHandler
-    chat_handler.receive_stream_data(session_id, data_chunk, message_id)
-    chat_handler.receive_stream_data(session_id, "[DONE]", message_id)
-
-    # Optionally, you might want to confirm receipt or provide additional info
-    return jsonify({"status": "Data received", "session_id": session_id})
+    return chat_handler.listen_to_stream(session_id)
 
 
 @app.route('/end_session', methods=['DELETE'])
