@@ -106,10 +106,10 @@ class ChatApp(AgentInterface):
                         break
                 # Re-insert the lines after removing the last "Agent:" line
                 self.chat_window.delete("1.0", tk.END)
-                self.chat_window.insert(tk.END, "\n".join(lines) + "\n")
+                self.chat_window.insert(tk.END, "\n".join(lines).strip() + "\n")
 
             # Append new text with speaker label
-            self.chat_window.insert(tk.END, f"{speaker}: {text}\n")
+            self.chat_window.insert(tk.END, f"{speaker}: {text.strip()}\n")
             self.chat_window.config(state='disabled')
             self.chat_window.yview(tk.END)
 

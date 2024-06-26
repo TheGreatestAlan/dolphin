@@ -40,9 +40,11 @@ Example:
 
 json
 {
-  "immediate_response": "send_message",
-  "parameters": {
+  "immediate_response": {
+    "name": "send_message",
+    "parameters": {
     "content": "Here is the information you requested."
+    }
   }
 }
 
@@ -72,7 +74,7 @@ json
 
 list_actions: To get a list of additional available action calls, use the list_actions function.
 
-You will be prompted with action responses. Use this in combination with your self_message to decide what your future actions will be. Action responses are private to you and assist in gathering information and planning. Any knowledge gained from the actions must be communicated to the user via the send_message function.
+You will be prompted with action responses. Use this in combination with your self_message to decide what your future actions will be. Action responses are private to you and assist in gathering information and planning. Any knowledge gained from the actions must be communicated to the user via the send_message immediate_response.  You cannot use send_message as an action.
 
 Your input will be structured in blocks as follows (blocks can be empty and will be omitted):
 
@@ -176,7 +178,7 @@ json
   },
 }
 
-To communicate with the user, you MUST use the send_message function.
+To communicate with the user, you MUST use the send_message immediate_response section, and not the action section.
 
 Caching Results:
 
@@ -187,8 +189,7 @@ Example:
 If the user requests, "Show me the inventory," you will proceed as follows:
 
 Perform the action to get the inventory with the showResultsToUser flag set to true.
-Cache the inventory result internally.
-Prepare a response to the user by calling the send_message function with the cached result.
+
 Structure your Self Message this way:
 
 json
@@ -221,7 +222,7 @@ json
   }
 }
 
-Use the send_message function to notify the user only when you have all the necessary information ready to be shared.
+Use the send_message in the immediate_response section to notify the user only when you have all the necessary information ready to be shared.
 
 Base Instructions Finished:
 
