@@ -1,17 +1,20 @@
 import json
 import os
+
 from flask import jsonify
 from langchain.memory import ConversationBufferMemory
+from langchain.schema import HumanMessage, AIMessage
+
 from FunctionResponse import FunctionResponse, Status
 
 
 class ChatHandler:
-    def __init__(self, sessions, sessions_file_path='sessions.json'):
-        self.sessions = sessions
+    def __init__(self, sessions_file_path='sessions.json'):
+        self.sessions = {}
         self.sessions_file_path = sessions_file_path
         self.result_cache = {}
         self.stream_listeners = {}
-        self.temp_buffers = {}
+        self.temp_buffers = {}  # Dictionary to hold temporary buffers for messages
         self.memories = {}  # Dictionary to hold ConversationBufferMemory instances
 
         self.load_sessions_from_file()
@@ -21,7 +24,7 @@ class ChatHandler:
             # Save sessions and their corresponding memory states
             sessions_data = {
                 "sessions": self.sessions,
-                "memories": {session_id: memory.to_dict() for session_id, memory in self.memories.items()}
+                "memories": {session_id: self.serialize_memory(memory) for session_id, memory in self.memories.items()}
             }
             with open(self.sessions_file_path, 'w') as file:
                 json.dump(sessions_data, file)
@@ -40,7 +43,7 @@ class ChatHandler:
                 self.sessions = sessions_data.get("sessions", {})
                 # Load memory states for each session
                 self.memories = {
-                    session_id: ConversationBufferMemory.from_dict(memory_data)
+                    session_id: self.deserialize_memory(memory_data)
                     for session_id, memory_data in sessions_data.get("memories", {}).items()
                 }
             print("Sessions successfully loaded from file.")
@@ -96,6 +99,8 @@ class ChatHandler:
         self.notify_listeners(session_id, data_chunk)
 
     def finalize_message(self, session_id, message, role):
+        if message is None or message == "":
+            return
         """Finalize the message and update the context."""
         if session_id in self.memories:
             if role == "Human":
@@ -147,3 +152,19 @@ class ChatHandler:
             if session_id in self.memories:
                 del self.memories[session_id]  # Remove memory for ended session
         return True
+
+    def serialize_memory(self, memory):
+        """Serialize a ConversationBufferMemory to a dictionary."""
+        messages = [{"role": "Human" if isinstance(msg, HumanMessage) else "AI", "content": msg.content}
+                    for msg in memory.chat_memory.messages]
+        return {"messages": messages}
+
+    def deserialize_memory(self, memory_data):
+        """Deserialize a dictionary to a ConversationBufferMemory."""
+        memory = ConversationBufferMemory()
+        for msg in memory_data.get("messages", []):
+            if msg["role"] == "Human":
+                memory.chat_memory.add_message(HumanMessage(content=msg["content"]))
+            else:
+                memory.chat_memory.add_message(AIMessage(content=msg["content"]))
+        return memory
