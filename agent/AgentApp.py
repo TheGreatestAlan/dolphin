@@ -75,6 +75,63 @@ def readFunctionList(file_path='../prompt/functionList.txt'):
 readFunctionList()
 
 
+def stream_immediate_response(response_generator, session_id, buffer):
+    in_content = False
+    finding_buffer = ""  # Buffer used for finding content markers
+    complete_buffer = ""  # Buffer to build the entire message
+
+    def is_unescaped_quote(buffer, pos):
+        # Check if the quote is unescaped
+        if pos == 0:
+            return True  # The first character is an unescaped quote
+        return buffer[pos - 1] != '\\'
+
+    for chunk in response_generator:
+        finding_buffer += chunk
+        complete_buffer += chunk
+
+        if not in_content:
+            # Look for the start of "immediate_response"
+            immediate_start = finding_buffer.find('"immediate_response": {')
+            if immediate_start != -1:
+                # Ensure we are within the "immediate_response"
+                content_start = finding_buffer.find('"content": "', immediate_start)
+                if content_start != -1:
+                    content_start += len('"content": "')
+                    finding_buffer = finding_buffer[content_start:]  # Trim buffer to start at content
+                    in_content = True
+
+        if in_content:
+            # Find the position of the unescaped ending quote
+            content_end = -1
+            pos = 0
+            while pos < len(finding_buffer):
+                pos = finding_buffer.find('"', pos)
+                if pos == -1:
+                    break
+                if is_unescaped_quote(finding_buffer, pos):
+                    content_end = pos
+                    break
+                pos += 1
+
+            if content_end != -1:
+                # Extract and send the content up to the end marker
+                content_to_stream = finding_buffer[:content_end]
+                chat_handler.receive_stream_data(session_id, content_to_stream)
+                finding_buffer = finding_buffer[content_end + 1:]  # Keep the remaining buffer
+                in_content = False  # Reset flag after handling content
+                chat_handler.receive_stream_data(session_id, "[DONE]")
+            else:
+                # Stream the content as it arrives without the final part
+                chat_handler.receive_stream_data(session_id, finding_buffer)
+                finding_buffer = ""  # Clear buffer after streaming
+
+    # Remove the [DONE] flag if present
+    complete_buffer = complete_buffer.replace('[DONE]', '')
+
+    # Return the entire response as a JSON string
+    return complete_buffer
+
 def handle_llm_response(response, session_id, streaming=False, nesting_level=0):
     if nesting_level > MAX_NESTING_LEVEL:
         return jsonify({"error": "Max nesting level reached, aborting to avoid infinite recursion."})
@@ -85,80 +142,28 @@ def handle_llm_response(response, session_id, streaming=False, nesting_level=0):
         if streaming:
             # Pass the buffer to a dedicated function for streaming processing
             response = stream_immediate_response(response, session_id, buffer)
+            response_dict = json.loads(response)
+
+            # Remove the 'immediate_response' key from the dictionary
+            if 'immediate_response' in response_dict:
+                del response_dict['immediate_response']
+
+            # Pass the modified response dictionary to process_response_content
+            if 'action' in response_dict:
+                return process_response_content(json.dumps(response_dict), session_id, nesting_level)
+            else:
+                return
 
         else:
             # Full response handling for non-streaming responses
-            response = ''.join(response())
-
-        if "\"name\": \"send_message\"" not in response:
-            return process_response_content(response, session_id, nesting_level)
-        else:
-            return
+            full_response = ''.join(response())
+            if "\"name\": \"send_message\"" not in full_response:
+                return process_response_content(full_response, session_id, nesting_level)
+            else:
+                return
 
     except Exception as e:
         return jsonify({"error": str(e)})  # Generic error handling
-
-
-def stream_immediate_response(response_generator, session_id, buffer):
-    in_content = False
-
-    def is_unescaped_quote(buffer, pos):
-        # Check if the quote is unescaped
-        if pos == 0:
-            return True  # The first character is an unescaped quote
-        return buffer[pos - 1] != '\\'
-
-    for chunk in response_generator:
-        buffer += chunk
-
-        if not in_content:
-            # Look for the start of "immediate_response"
-            immediate_start = buffer.find('"immediate_response": {')
-            if immediate_start != -1:
-                # Ensure we are within the "immediate_response"
-                content_start = buffer.find('"content": "', immediate_start)
-                if content_start != -1:
-                    content_start += len('"content": "')
-                    buffer = buffer[content_start:]  # Trim buffer to start at content
-                    in_content = True
-
-        if in_content:
-            # Find the position of the unescaped ending quote
-            content_end = -1
-            pos = 0
-            while pos < len(buffer):
-                pos = buffer.find('"', pos)
-                if pos == -1:
-                    break
-                if is_unescaped_quote(buffer, pos):
-                    content_end = pos
-                    break
-                pos += 1
-
-            if content_end != -1:
-                # Extract and send the content up to the end marker
-                content_to_stream = buffer[:content_end]
-                chat_handler.receive_stream_data(session_id, content_to_stream)
-                buffer = buffer[content_end + 1:]  # Keep the remaining buffer
-                in_content = False  # Reset flag after handling content
-
-                # Handle remaining data after immediate_response content is sent
-                try:
-                    remaining_data = json.loads('{' + buffer)
-                    return json.dumps(remaining_data)
-                except json.JSONDecodeError:
-                    continue  # If not valid JSON, continue buffering
-            else:
-                # Stream the content as it arrives without the final part
-                chat_handler.receive_stream_data(session_id, buffer)
-                buffer = ""  # Clear buffer after streaming
-
-    # Return any unprocessed buffer as JSON if no further content markers are found
-    try:
-        remaining_data = json.loads('{' + buffer)
-        return json.dumps(remaining_data)
-    except json.JSONDecodeError:
-        return "{}"  # Return empty JSON if there's an error
 
 
 def process_response_content(generated_text, session_id, nesting_level):
@@ -173,6 +178,12 @@ def process_response_content(generated_text, session_id, nesting_level):
 
         # Handling actions and potentially recursive operations
         function_response = function_mapper.handle_function_call(response_json, session_id)
+
+        action = response_json.get("action")
+        parameters = action.get("parameters", {})
+        show_results_to_user = parameters.pop("showResultsToUser", False)
+        if show_results_to_user:
+            return
 
         # Recursive call to process further based on the self_message and function response
         next_chunk = send_message_to_llm(SYSTEM_MESSAGE, None, response_json['self_message'], function_response)

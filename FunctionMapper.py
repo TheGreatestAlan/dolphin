@@ -83,7 +83,8 @@ class FunctionMapper:
             response = action_mapping[action_name](parameters)
 
             if show_results_to_user:
-                self.chat_handler.cache_result(session_id, response)
+                self.chat_handler.receive_stream_data(session_id, response.response)
+                self.chat_handler.receive_stream_data(session_id, "[DONE]")
 
             return self.wrap_to_action_response(response, action_name)
 

@@ -47,21 +47,28 @@ class ChatApp(AgentInterface):
         if prompt:
             self.prompt_entry.delete(0, tk.END)
             self.append_chat("You", prompt)
-            data = {
-                'session_id': self.session_id,
-                'user_message': prompt
-            }
-            try:
-                requests.post(f"{self.agent_url}/message_agent", json=data)
-            except requests.exceptions.RequestException as e:
-                self.append_chat("System", f"Failed to send message: {e}")
+
+            # Start streaming immediately after sending the message
+            thread = threading.Thread(target=self._send_prompt, args=(prompt,))
+            thread.start()
+
+    def _send_prompt(self, prompt):
+        data = {
+            'session_id': self.session_id,
+            'user_message': prompt
+        }
+        try:
+            response = requests.post(f"{self.agent_url}/message_agent", json=data)
+            if not response.ok:
+                self.append_chat("System", f"Failed to send message: {response.text}")
+        except requests.exceptions.RequestException as e:
+            self.append_chat("System", f"Failed to send message: {e}")
 
     def listen_to_stream(self):
         def stream():
             try:
                 response = requests.get(f"{self.agent_url}/stream/{self.session_id}", stream=True)
                 current_message = ""  # Accumulate messages here
-                new_message = True  # Flag to indicate the start of a new message
 
                 for line in response.iter_lines():
                     if line:
@@ -74,14 +81,9 @@ class ChatApp(AgentInterface):
                             if message == "[DONE]":
                                 self.append_chat("Agent", current_message)  # Display the complete message
                                 current_message = ""  # Clear the current message after displaying
-                                new_message = True  # Prepare for a new message
                             else:
-                                if new_message:
-                                    current_message = message  # Start new message with first part
-                                    new_message = False  # Further parts will continue this message
-                                else:
-                                    current_message += " " + message  # Append new part to the current message
-                                self.update_chat_display("Agent", message)  # Update GUI with the current fragment
+                                current_message += message  # Append new part to the current message
+                                self.update_chat_display("Agent", current_message)  # Update GUI with the current message
 
             except requests.exceptions.RequestException as e:
                 self.append_chat("System", f"Failed to connect to stream: {e}")
@@ -93,8 +95,21 @@ class ChatApp(AgentInterface):
     def update_chat_display(self, speaker, text):
         def update():
             self.chat_window.config(state='normal')
-            self.chat_window.insert(tk.END,
-                                    f"{speaker}: {text}\n")  # Append new text with speaker label only on new messages
+            lines = self.chat_window.get("1.0", tk.END).split("\n")
+
+            # Check if the last line starts with "Agent:"
+            if lines and any(line.startswith("Agent:") for line in lines):
+                # Find the last line with "Agent:"
+                for i in range(len(lines) - 1, -1, -1):
+                    if lines[i].startswith("Agent:"):
+                        lines.pop(i)
+                        break
+                # Re-insert the lines after removing the last "Agent:" line
+                self.chat_window.delete("1.0", tk.END)
+                self.chat_window.insert(tk.END, "\n".join(lines) + "\n")
+
+            # Append new text with speaker label
+            self.chat_window.insert(tk.END, f"{speaker}: {text}\n")
             self.chat_window.config(state='disabled')
             self.chat_window.yview(tk.END)
 
