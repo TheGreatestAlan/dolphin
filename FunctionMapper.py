@@ -1,7 +1,7 @@
 import json
 import os
 
-from FunctionResponse import FunctionResponse
+from FunctionResponse import FunctionResponse, Status
 from functiongenerator.InventoryFunctionGenerator import InventoryFunctionGenerator
 from integrations.ChatHandler import ChatHandler
 from integrations.Inventory import Inventory
@@ -95,16 +95,16 @@ class FunctionMapper:
             print("Error:", str(e))
             return {'action_name': 'error', 'response': str(e)}
 
-    def list_functions(self):
+    def list_functions(self) -> FunctionResponse:
         try:
             script_dir = os.path.dirname(os.path.abspath(__file__))
             file_path = os.path.join(script_dir, './prompt/functionList.txt')
             with open(file_path, 'r') as file:
                 functions = json.load(file)
-            return functions
+            return FunctionResponse(Status.SUCCESS, functions)
         except FileNotFoundError:
-            return {"error": "functions.json file not found"}
+            return FunctionResponse(Status.FAILURE, {"error": "functions.json file not found"})
         except json.JSONDecodeError as e:
-            return {"error": f"Error decoding JSON: {str(e)}"}
+            return FunctionResponse(Status.FAILURE,{"error": f"Error decoding JSON: {str(e)}"})
         except Exception as e:
-            return {"error": str(e)}
+            return FunctionResponse(Status.Failure,{"error": str(e)})

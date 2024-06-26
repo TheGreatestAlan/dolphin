@@ -26,6 +26,9 @@ class ChatApp(AgentInterface):
         self.send_button = tk.Button(root, text="Send", command=self.send_prompt)
         self.send_button.grid(row=1, column=1, padx=10, pady=10)
 
+        self.message_history = []
+        self.current_message = ""
+
         self.start_session()
 
     def start_session(self):
@@ -68,7 +71,6 @@ class ChatApp(AgentInterface):
         def stream():
             try:
                 response = requests.get(f"{self.agent_url}/stream/{self.session_id}", stream=True)
-                current_message = ""  # Accumulate messages here
 
                 for line in response.iter_lines():
                     if line:
@@ -79,13 +81,12 @@ class ChatApp(AgentInterface):
                             message = data.get('message')
 
                             if message == "[DONE]":
-                                self.append_chat("Agent", current_message,
-                                                 clear_partial=True)  # Commit the complete message
-                                current_message = ""  # Clear the current message after displaying
+                                self.message_history.append(f"Agent: {self.current_message.strip()}")
+                                self.current_message = ""
+                                self.update_chat_display()
                             else:
-                                current_message += message  # Append new part to the current message
-                                self.update_chat_display("Agent",
-                                                         current_message)  # Update GUI with the current message
+                                self.current_message += message
+                                self.update_chat_display()
 
             except requests.exceptions.RequestException as e:
                 self.append_chat("System", f"Failed to connect to stream: {e}")
@@ -94,50 +95,37 @@ class ChatApp(AgentInterface):
         thread.daemon = True
         thread.start()
 
-    def update_chat_display(self, speaker, text):
+    def update_chat_display(self):
         def update():
             self.chat_window.config(state='normal')
-            lines = self.chat_window.get("1.0", tk.END).split("\n")
+            self.chat_window.delete("1.0", tk.END)
 
-            # Find the last line with "Agent:" and remove it
-            if lines and any(line.startswith("Agent:") for line in lines):
-                for i in range(len(lines) - 1, -1, -1):
-                    if lines[i].startswith("Agent:"):
-                        lines.pop(i)
-                        break
+            # Display message history
+            for entry in self.message_history:
+                self.chat_window.insert(tk.END, f"{entry}\n")
 
-                # Re-insert the lines after removing the last "Agent:" line
-                self.chat_window.delete("1.0", tk.END)
-                self.chat_window.insert(tk.END, "\n".join(lines).strip() + "\n")
+            # Display current agent message
+            if self.current_message:
+                self.chat_window.insert(tk.END, f"Agent: {self.current_message.strip()}\n")
 
-            # Append new text with speaker label
-            self.chat_window.insert(tk.END, f"{speaker}: {text.strip()}\n")
             self.chat_window.config(state='disabled')
             self.chat_window.yview(tk.END)
 
         self.root.after(0, update)
 
-    def append_chat(self, speaker, text, newline=True, clear_partial=False):
+    def append_chat(self, speaker, text, newline=True):
         def append():
             self.chat_window.config(state='normal')
-
-            if clear_partial:
-                lines = self.chat_window.get("1.0", tk.END).split("\n")
-                # Find the last line with "Agent:" and remove it
-                if lines and any(line.startswith("Agent:") for line in lines):
-                    for i in range(len(lines) - 1, -1, -1):
-                        if lines[i].startswith("Agent:"):
-                            lines.pop(i)
-                            break
-
-                    # Re-insert the lines after removing the last "Agent:" line
-                    self.chat_window.delete("1.0", tk.END)
-                    self.chat_window.insert(tk.END, "\n".join(lines).strip() + "\n")
-
             entry = f"{speaker}: {text}"
             if newline:
                 entry += "\n"
-            self.chat_window.insert(tk.END, entry)
+            self.message_history.append(entry.strip())
+            self.chat_window.delete("1.0", tk.END)
+
+            # Display message history
+            for entry in self.message_history:
+                self.chat_window.insert(tk.END, f"{entry}\n")
+
             self.chat_window.config(state='disabled')
             self.chat_window.yview(tk.END)
 
