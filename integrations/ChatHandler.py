@@ -1,9 +1,7 @@
 import json
 import os
-
 from flask import jsonify
-from langchain import ContextManager, Memory, SlidingWindowContext
-
+from langchain.memory import ConversationBufferMemory
 from FunctionResponse import FunctionResponse, Status
 
 
@@ -13,18 +11,20 @@ class ChatHandler:
         self.sessions_file_path = sessions_file_path
         self.result_cache = {}
         self.stream_listeners = {}
-        self.temp_buffers = {}  # Dictionary to hold temporary buffers for messages
-
-        # Initialize LangChain Context Manager and Memory
-        self.context_manager = ContextManager(memory=Memory())
-        self.context_window = SlidingWindowContext(window_size=5)  # Adjust window size as needed
+        self.temp_buffers = {}
+        self.memories = {}  # Dictionary to hold ConversationBufferMemory instances
 
         self.load_sessions_from_file()
 
     def save_sessions_to_file(self):
         try:
+            # Save sessions and their corresponding memory states
+            sessions_data = {
+                "sessions": self.sessions,
+                "memories": {session_id: memory.to_dict() for session_id, memory in self.memories.items()}
+            }
             with open(self.sessions_file_path, 'w') as file:
-                json.dump(self.sessions, file)
+                json.dump(sessions_data, file)
             print("Sessions successfully saved to file.")
         except IOError as err:
             print(f"Error saving sessions to file: {err}")
@@ -36,7 +36,13 @@ class ChatHandler:
                 self.save_sessions_to_file()
 
             with open(self.sessions_file_path, 'r') as file:
-                self.sessions = json.load(file)
+                sessions_data = json.load(file)
+                self.sessions = sessions_data.get("sessions", {})
+                # Load memory states for each session
+                self.memories = {
+                    session_id: ConversationBufferMemory.from_dict(memory_data)
+                    for session_id, memory_data in sessions_data.get("memories", {}).items()
+                }
             print("Sessions successfully loaded from file.")
         except (IOError, json.JSONDecodeError) as err:
             print(f"Error loading sessions from file: {err}")
@@ -47,7 +53,7 @@ class ChatHandler:
             self.result_cache[session_id] = ""
         self.result_cache[session_id] += "\n" + content.response
 
-    def send_message(self, session_id, content):
+    def send_message(self, session_id, content, role="AI"):
         if session_id not in self.sessions:
             self.sessions[session_id] = []
 
@@ -57,7 +63,7 @@ class ChatHandler:
             full_content += f"\nResult: {self.result_cache[session_id]}"
             del self.result_cache[session_id]
 
-        self.sessions[session_id].append({"message": full_content})
+        self.sessions[session_id].append({"role": role, "message": full_content})
         self.save_sessions_to_file()
         print(f"Sending message to user: {full_content}")
         return FunctionResponse(Status.SUCCESS, "completed")
@@ -69,7 +75,7 @@ class ChatHandler:
         latest_response = self.sessions[session_id][-1]
         return jsonify(latest_response)
 
-    def receive_stream_data(self, session_id, data_chunk, message_id):
+    def receive_stream_data(self, session_id, data_chunk, message_id, role="AI"):
         """Process received stream data by appending to session and notifying listeners."""
         if session_id not in self.sessions:
             self.sessions[session_id] = []
@@ -84,14 +90,34 @@ class ChatHandler:
         # Strip the buffer of whitespace and check for end marker
         if self.temp_buffers[message_id].strip().endswith("[DONE]"):
             complete_message = self.temp_buffers.pop(message_id).replace("[DONE]", "").strip()
-            self.sessions[session_id].append({"message": complete_message})
-            self.finalize_message(session_id, complete_message)
+            self.sessions[session_id].append({"role": role, "message": complete_message})
+            self.finalize_message(session_id, complete_message, role)
 
         self.notify_listeners(session_id, data_chunk)
 
-    def finalize_message(self, session_id, message):
+    def finalize_message(self, session_id, message, role):
         """Finalize the message and update the context."""
-        self.context_manager.add_to_context(session_id, message)  # Add complete message to context
+        if session_id in self.memories:
+            if role == "Human":
+                self.memories[session_id].save_context({"input": message}, {"output": ""})
+            elif role == "AI":
+                self.memories[session_id].save_context({"input": ""}, {"output": message})
+
+    def store_human_context(self, session_id, message):
+        """Store a human message in the session context from an external source."""
+        if session_id not in self.sessions:
+            self.sessions[session_id] = []
+
+        self.sessions[session_id].append({"role": "Human", "message": message})
+        self.finalize_message(session_id, message, "Human")
+        self.save_sessions_to_file()
+
+    def get_context(self, session_id):
+        """Retrieve the message context for a given session."""
+        if session_id in self.memories:
+            context = self.memories[session_id].load_memory_variables({})
+            return context.get("history", "")
+        return ""
 
     def notify_listeners(self, session_id, data):
         """Notify listeners with the given data."""
@@ -111,12 +137,13 @@ class ChatHandler:
         session_id = os.urandom(16).hex()
         self.sessions[session_id] = []
         self.save_sessions_to_file()
-        self.context_manager.create_context(session_id)  # Initialize context for the session
+        self.memories[session_id] = ConversationBufferMemory()  # Create memory for new session
         return session_id
 
     def end_session(self, session_id):
         if session_id in self.sessions:
             del self.sessions[session_id]
             self.save_sessions_to_file()
-            self.context_manager.clear_context(session_id)  # Clear context for the session
+            if session_id in self.memories:
+                del self.memories[session_id]  # Remove memory for ended session
         return True

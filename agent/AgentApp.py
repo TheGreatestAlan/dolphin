@@ -80,7 +80,7 @@ def stream_immediate_response(response_generator, session_id):
     in_content = False
     finding_buffer = ""  # Buffer used for finding content markers
     complete_buffer = ""  # Buffer to build the entire message
-    message_id = str(uuid.uuid5())
+    message_id = str(uuid.uuid4())
 
     def is_unescaped_quote(buffer, pos):
         # Check if the quote is unescaped
@@ -119,7 +119,7 @@ def stream_immediate_response(response_generator, session_id):
             if content_end != -1:
                 # Extract and send the content up to the end marker
                 content_to_stream = finding_buffer[:content_end]
-                chat_handler.receive_stream_data(session_id, content_to_stream)
+                chat_handler.receive_stream_data(session_id, content_to_stream, message_id)
                 finding_buffer = finding_buffer[content_end + 1:]  # Keep the remaining buffer
                 in_content = False  # Reset flag after handling content
                 chat_handler.receive_stream_data(session_id, "[DONE]", message_id)
@@ -164,6 +164,7 @@ def handle_llm_response(response, session_id, streaming=False, nesting_level=0):
                 return
 
     except Exception as e:
+        print(e)
         return jsonify({"error": str(e)})  # Generic error handling
 
 
@@ -186,10 +187,13 @@ def process_response_content(generated_text, session_id, nesting_level):
         if show_results_to_user:
             return
 
+        # Retrieve context from chat_handler
+        context = chat_handler.get_context(session_id)
+
         # Recursive call to process further based on the self_message and function response
         next_chunk = send_message_to_llm(SYSTEM_MESSAGE, None, response_json['self_message'], function_response,
-                                         chat_handler.sessions[session_id])
-        return process_response_content(next_chunk, session_id, nesting_level + 1)
+                                         context, True)
+        return handle_llm_response(next_chunk, session_id, True, nesting_level + 1)
 
     except (ValueError, KeyError, json.JSONDecodeError) as e:
         error_response = {
@@ -201,18 +205,22 @@ def process_response_content(generated_text, session_id, nesting_level):
                 }
             }
         }
+        context = chat_handler.get_context(session_id)
+
         return handle_llm_response(
-            send_message_to_llm(SYSTEM_MESSAGE, None, response_json['self_message'], json.dumps(error_response)),
+            send_message_to_llm(SYSTEM_MESSAGE, None, response_json['self_message'], json.dumps(error_response), context),
             session_id,
+            True,
             nesting_level + 1
         )
 
 
-def send_message_to_llm(system_message, user_message, self_message, action_response, streaming=False):
+def send_message_to_llm(system_message, user_message, self_message, action_response, context=None, streaming=False):
     prompt_dict = {
         "user_message": user_message,
         "self_message": self_message,
-        "action_response": action_response
+        "action_response": action_response,
+        "conversation_history": context or []
     }
     prompt = json.dumps(prompt_dict, indent=4)
 
@@ -236,13 +244,15 @@ def generate():
 
     if not session_id or session_id not in chat_handler.sessions:
         return jsonify({"error": "Invalid or missing session_id"}), 400
-
+    context = chat_handler.get_context(session_id)
     try:
         generated_text = send_message_to_llm(
             SYSTEM_MESSAGE,
             user_message,
             None,
-            None
+            None,
+            context,
+            False
         )
         response = handle_llm_response(generated_text)
         return jsonify({"response": response})
@@ -258,7 +268,8 @@ def message_agent():
 
     if not session_id or session_id not in chat_handler.sessions:
         return jsonify({"error": "Invalid or missing session_id"}), 400
-
+    chat_handler.store_human_context(session_id, user_message)
+    context = chat_handler.get_context(session_id)
     try:
         # Use the streaming option in send_message_to_llm
         response_stream = send_message_to_llm(
@@ -266,6 +277,7 @@ def message_agent():
             user_message,
             None,
             None,
+            context,
             streaming=True
         )
 
@@ -330,7 +342,7 @@ def receive_data(session_id):
 
     data_chunk = request.data.decode('utf-8')  # Decode data assuming it's sent as UTF-8
 
-    message_id = str(uuid.uuid5())
+    message_id = str(uuid.uuid4())
     # Process the received data through the ChatHandler
     chat_handler.receive_stream_data(session_id, data_chunk, message_id)
     chat_handler.receive_stream_data(session_id, "[DONE]", message_id)
