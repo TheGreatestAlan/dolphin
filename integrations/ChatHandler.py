@@ -15,7 +15,9 @@ class ChatHandler:
         self.sessions_file_path = sessions_file_path
         self.result_cache = {}
         self.stream_listeners = {}
+        self.stream_buffers = {}  # Dictionary to hold stream buffers for messages by session_id
         self.temp_buffers = {}  # Dictionary to hold temporary buffers for messages by session_id
+        self.session_buffers = {}  # Dictionary to hold session buffers for messages by session_id
         self.memories = {}  # Dictionary to hold ConversationBufferMemory instances
 
         self.load_sessions_from_file()
@@ -87,22 +89,13 @@ class ChatHandler:
 
         def generate():
             yield "data: {\"message\": \"Connection established.\"}\n\n"
-            last_index = -1  # Initialize to indicate no messages sent yet
 
             while True:
-                # Stream from the completed messages
-                if session_id in self.temp_buffers:
-                    session_messages = self.temp_buffers[session_id]
-                    while last_index < len(session_messages) - 1:
-                        last_index += 1
-                        message = session_messages[last_index]
-                        yield f"data: {json.dumps(message)}\n\n"
-
-                # Stream live data from the buffer
-                if session_id in self.temp_buffers:
-                    for message_id, buffer in self.temp_buffers[session_id].items():
-                        if buffer:
-                            yield f"data: {json.dumps({'message': buffer})}\n\n"
+                # Stream live data from the stream buffer
+                if session_id in self.stream_buffers:
+                    while self.stream_buffers[session_id]:
+                        data_chunk = self.stream_buffers[session_id].pop(0)
+                        yield f"data: {json.dumps({'message': data_chunk})}\n\n"
 
                 time.sleep(1)
 
@@ -121,16 +114,21 @@ class ChatHandler:
         if message_id not in self.temp_buffers[session_id]:
             self.temp_buffers[session_id][message_id] = ""
 
-        # Accumulate chunks to buffer
+        # Accumulate chunks to temp buffer
         self.temp_buffers[session_id][message_id] += data_chunk
+
+        # Copy to stream buffer
+        if session_id not in self.stream_buffers:
+            self.stream_buffers[session_id] = []
+        self.stream_buffers[session_id].append(data_chunk)
 
         # Strip the buffer of whitespace and check for end marker
         if self.temp_buffers[session_id][message_id].strip().endswith("[DONE]"):
             complete_message = self.temp_buffers[session_id].pop(message_id).replace("[DONE]", "").strip()
-            self.sessions[session_id].append({"role": role, "message": complete_message})
+            if session_id not in self.session_buffers:
+                self.session_buffers[session_id] = []
+            self.session_buffers[session_id].append({"role": role, "message": complete_message})
             self.finalize_message(session_id, complete_message, role)
-
-        self.notify_listeners(session_id, data_chunk)
 
     def finalize_message(self, session_id, message, role):
         """Finalize the message and update the context."""
