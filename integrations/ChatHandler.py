@@ -15,7 +15,7 @@ class ChatHandler:
         self.sessions_file_path = sessions_file_path
         self.result_cache = {}
         self.stream_listeners = {}
-        self.temp_buffers = {}  # Dictionary to hold temporary buffers for messages
+        self.temp_buffers = {}  # Dictionary to hold temporary buffers for messages by session_id
         self.memories = {}  # Dictionary to hold ConversationBufferMemory instances
 
         self.load_sessions_from_file()
@@ -91,8 +91,8 @@ class ChatHandler:
 
             while True:
                 # Stream from the completed messages
-                if session_id in self.sessions:
-                    session_messages = self.sessions[session_id]
+                if session_id in self.temp_buffers:
+                    session_messages = self.temp_buffers[session_id]
                     while last_index < len(session_messages) - 1:
                         last_index += 1
                         message = session_messages[last_index]
@@ -100,29 +100,33 @@ class ChatHandler:
 
                 # Stream live data from the buffer
                 if session_id in self.temp_buffers:
-                    buffer = self.temp_buffers[session_id]
-                    if buffer:
-                        yield f"data: {json.dumps({'message': buffer})}\n\n"
+                    for message_id, buffer in self.temp_buffers[session_id].items():
+                        if buffer:
+                            yield f"data: {json.dumps({'message': buffer})}\n\n"
 
                 time.sleep(1)
 
         return Response(generate(), mimetype='text/event-stream')
 
-    def receive_stream_data(self, session_id, data_chunk,message_id, role="AI"):
+    def receive_stream_data(self, session_id, data_chunk, message_id, role="AI"):
         """Process received stream data by appending to session and notifying listeners."""
         if session_id not in self.sessions:
             self.sessions[session_id] = []
 
-        # Initialize buffer if not present
-        if message_id not in self.temp_buffers:
-            self.temp_buffers[message_id] = ""
+        # Initialize session buffer if not present
+        if session_id not in self.temp_buffers:
+            self.temp_buffers[session_id] = {}
+
+        # Initialize message buffer if not present
+        if message_id not in self.temp_buffers[session_id]:
+            self.temp_buffers[session_id][message_id] = ""
 
         # Accumulate chunks to buffer
-        self.temp_buffers[message_id] += data_chunk
+        self.temp_buffers[session_id][message_id] += data_chunk
 
         # Strip the buffer of whitespace and check for end marker
-        if self.temp_buffers[message_id].strip().endswith("[DONE]"):
-            complete_message = self.temp_buffers.pop(message_id).replace("[DONE]", "").strip()
+        if self.temp_buffers[session_id][message_id].strip().endswith("[DONE]"):
+            complete_message = self.temp_buffers[session_id].pop(message_id).replace("[DONE]", "").strip()
             self.sessions[session_id].append({"role": role, "message": complete_message})
             self.finalize_message(session_id, complete_message, role)
 
