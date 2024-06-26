@@ -1,5 +1,4 @@
 import json
-import time
 import uuid
 
 import requests
@@ -9,6 +8,7 @@ import os
 from SmartFindingInventoryClient import SmartFindingInventoryClient
 from functiongenerator.InventoryFunctionGenerator import InventoryFunctionGenerator
 from integrations.InventoryRestClient import InventoryClient
+from integrations.KnowledgeQuery import KnowledgeQuery
 from llms.RestLLM import RestLLM
 from llms.ChatGPT4 import ChatGPT4  # Import the ChatGPT4 class
 from FunctionMapper import FunctionMapper
@@ -35,7 +35,8 @@ rest_inventory_client = InventoryClient(os.environ.get("ORGANIZER_SERVER_URL"))
 smart_finding_inventory_client = SmartFindingInventoryClient(rest_inventory_client, llm_client)
 function_generator = InventoryFunctionGenerator(llm_client)
 chat_handler = ChatHandler(sessions_file_path)
-function_mapper = FunctionMapper(smart_finding_inventory_client, function_generator, chat_handler)
+knowledge_query = KnowledgeQuery(llm_client)
+function_mapper = FunctionMapper(smart_finding_inventory_client, function_generator, chat_handler, knowledge_query)
 
 # Ensure the system message is read at startup
 SYSTEM_MESSAGE = ''

@@ -103,6 +103,21 @@
           }
         }
       }
+    },
+    {
+      "action": "knowledge_query",
+      "parameters": {
+        "query": "string",
+      },
+      "example": {
+        "query": "What is the main street in Denver?",
+        "response": {
+          "action": "knowledge_query",
+          "parameters": {
+            "response": "One of the main streets in the city of Denver is Broadway.",
+          }
+        }
+      }
     }
   ]
 }

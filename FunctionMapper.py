@@ -6,13 +6,15 @@ from FunctionResponse import FunctionResponse, Status
 from functiongenerator.InventoryFunctionGenerator import InventoryFunctionGenerator
 from integrations.ChatHandler import ChatHandler
 from integrations.Inventory import Inventory
+from integrations.KnowledgeQuery import KnowledgeQuery
 
 
 class FunctionMapper:
-    def __init__(self, inventory: Inventory, function_generator: InventoryFunctionGenerator, chat_handler: ChatHandler):
+    def __init__(self, inventory: Inventory, function_generator: InventoryFunctionGenerator, chat_handler: ChatHandler, knowledge_query: KnowledgeQuery):
         self.inventory = inventory
         self.function_generator = function_generator
         self.chat_handler = chat_handler
+        self.knowledge_query = knowledge_query
         self.cache = {}  # Cache to store results temporarily
 
         # Define expected method signatures
@@ -26,7 +28,8 @@ class FunctionMapper:
             "list_actions": "list_actions()",
             "poll_response": "poll_response(session_id: str)",
             "start_session": "start_session()",
-            "end_session": "end_session(session_id: str)"
+            "end_session": "end_session(session_id: str)",
+            "knowledge_query": "knowledge_query(query: str)"
         }
 
     def wrap_to_action_response(self, function_response: FunctionResponse, action_name:str) -> dict:
@@ -59,7 +62,8 @@ class FunctionMapper:
                 "list_actions": lambda _: self.list_functions(),
                 "poll_response": lambda params: self.chat_handler.poll_response(session_id),
                 "start_session": lambda _: self.chat_handler.start_session(),
-                "end_session": lambda params: self.chat_handler.end_session(session_id)
+                "end_session": lambda params: self.chat_handler.end_session(session_id),
+                "knowledge_query": lambda params: self.knowledge_query.query(params["query"])
             }
 
             if action_name not in action_mapping:
@@ -71,6 +75,7 @@ class FunctionMapper:
                 "create_items": ["container", "items"],
                 "delete_items": ["container", "items"],
                 "send_message": ["content"],
+                "knowledge_query": ["query"]
             }
 
             if action_name in required_params:
