@@ -79,48 +79,90 @@ def handle_llm_response(response, session_id, streaming=False, nesting_level=0):
     if nesting_level > MAX_NESTING_LEVEL:
         return jsonify({"error": "Max nesting level reached, aborting to avoid infinite recursion."})
 
+    buffer = ""  # Initialize the buffer for this response handling session
+
     try:
         if streaming:
-            # Call the new method to handle streaming of immediate_response
-            stream_immediate_response(response, session_id)
+            # Pass the buffer to a dedicated function for streaming processing
+            response = stream_immediate_response(response, session_id, buffer)
+
         else:
             # Full response handling for non-streaming responses
-            full_response = ''.join(response())
-            process_response_content(full_response, session_id, nesting_level)
+            response = ''.join(response())
+
+        if "\"name\": \"send_message\"" not in response:
+            return process_response_content(response, session_id, nesting_level)
+        else:
+            return
 
     except Exception as e:
         return jsonify({"error": str(e)})  # Generic error handling
 
 
-def stream_immediate_response(response_generator, session_id):
-    buffer = ""
-    parsing_content = False
+def stream_immediate_response(response_generator, session_id, buffer):
+    in_content = False
 
-    for chunk in response_generator():
+    def is_unescaped_quote(buffer, pos):
+        # Check if the quote is unescaped
+        if pos == 0:
+            return True  # The first character is an unescaped quote
+        return buffer[pos - 1] != '\\'
+
+    for chunk in response_generator:
         buffer += chunk
 
-        if not parsing_content:
+        if not in_content:
             # Look for the start of "immediate_response"
             immediate_start = buffer.find('"immediate_response": {')
             if immediate_start != -1:
-                # Start buffering from this point
-                buffer = buffer[immediate_start:]
-                parsing_content = True
+                # Ensure we are within the "immediate_response"
+                content_start = buffer.find('"content": "', immediate_start)
+                if content_start != -1:
+                    content_start += len('"content": "')
+                    buffer = buffer[content_start:]  # Trim buffer to start at content
+                    in_content = True
 
-        if parsing_content:
-            # Check for the "content" within "immediate_response"
-            content_start = buffer.find('"content": "')
-            content_end = buffer.find('",', content_start)
-            if content_start != -1 and content_end != -1:
-                content_start += len('"content": "')
-                content_buffer = buffer[content_start:content_end]
-                # Stream the content found
-                chat_handler.receive_stream_data(session_id, content_buffer)
-                buffer = ""  # Reset buffer after handling
-                break  # Optionally break after handling or continue if expecting more data
+        if in_content:
+            # Find the position of the unescaped ending quote
+            content_end = -1
+            pos = 0
+            while pos < len(buffer):
+                pos = buffer.find('"', pos)
+                if pos == -1:
+                    break
+                if is_unescaped_quote(buffer, pos):
+                    content_end = pos
+                    break
+                pos += 1
+
+            if content_end != -1:
+                # Extract and send the content up to the end marker
+                content_to_stream = buffer[:content_end]
+                chat_handler.receive_stream_data(session_id, content_to_stream)
+                buffer = buffer[content_end + 1:]  # Keep the remaining buffer
+                in_content = False  # Reset flag after handling content
+
+                # Handle remaining data after immediate_response content is sent
+                try:
+                    remaining_data = json.loads('{' + buffer)
+                    return json.dumps(remaining_data)
+                except json.JSONDecodeError:
+                    continue  # If not valid JSON, continue buffering
+            else:
+                # Stream the content as it arrives without the final part
+                chat_handler.receive_stream_data(session_id, buffer)
+                buffer = ""  # Clear buffer after streaming
+
+    # Return any unprocessed buffer as JSON if no further content markers are found
+    try:
+        remaining_data = json.loads('{' + buffer)
+        return json.dumps(remaining_data)
+    except json.JSONDecodeError:
+        return "{}"  # Return empty JSON if there's an error
 
 
 def process_response_content(generated_text, session_id, nesting_level):
+    print(generated_text)
     if nesting_level > MAX_NESTING_LEVEL:
         return jsonify({"error": "Max nesting level reached, aborting to avoid infinite recursion."})
 
@@ -131,8 +173,6 @@ def process_response_content(generated_text, session_id, nesting_level):
 
         # Handling actions and potentially recursive operations
         function_response = function_mapper.handle_function_call(response_json, session_id)
-        if function_response.get('action_name') == 'send_message':
-            return  # Exit if the action does not require further processing
 
         # Recursive call to process further based on the self_message and function response
         next_chunk = send_message_to_llm(SYSTEM_MESSAGE, None, response_json['self_message'], function_response)
@@ -216,8 +256,9 @@ def message_agent():
             streaming=True
         )
 
-        # Return the streamed response to the client
-        return Response(response_stream(), mimetype='text/event-stream')
+        handle_llm_response(response_stream, session_id, True, )
+        # Correctly pass the generator to the Response object without calling it as a function
+        return jsonify({"status": "Message received, processing started"}), 202
     except requests.RequestException as e:
         return jsonify({"error": "Failed to generate text", "details": str(e)}), 500
 
