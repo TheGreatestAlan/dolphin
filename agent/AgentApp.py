@@ -1,5 +1,6 @@
 import json
 import time
+import uuid
 
 import requests
 from flask import Flask, request, jsonify, Response
@@ -75,10 +76,11 @@ def readFunctionList(file_path='../prompt/functionList.txt'):
 readFunctionList()
 
 
-def stream_immediate_response(response_generator, session_id, buffer):
+def stream_immediate_response(response_generator, session_id):
     in_content = False
     finding_buffer = ""  # Buffer used for finding content markers
     complete_buffer = ""  # Buffer to build the entire message
+    message_id = str(uuid.uuid5())
 
     def is_unescaped_quote(buffer, pos):
         # Check if the quote is unescaped
@@ -120,10 +122,10 @@ def stream_immediate_response(response_generator, session_id, buffer):
                 chat_handler.receive_stream_data(session_id, content_to_stream)
                 finding_buffer = finding_buffer[content_end + 1:]  # Keep the remaining buffer
                 in_content = False  # Reset flag after handling content
-                chat_handler.receive_stream_data(session_id, "[DONE]")
+                chat_handler.receive_stream_data(session_id, "[DONE]", message_id)
             else:
                 # Stream the content as it arrives without the final part
-                chat_handler.receive_stream_data(session_id, finding_buffer)
+                chat_handler.receive_stream_data(session_id, finding_buffer, message_id)
                 finding_buffer = ""  # Clear buffer after streaming
 
     # Remove the [DONE] flag if present
@@ -132,16 +134,15 @@ def stream_immediate_response(response_generator, session_id, buffer):
     # Return the entire response as a JSON string
     return complete_buffer
 
+
 def handle_llm_response(response, session_id, streaming=False, nesting_level=0):
     if nesting_level > MAX_NESTING_LEVEL:
         return jsonify({"error": "Max nesting level reached, aborting to avoid infinite recursion."})
 
-    buffer = ""  # Initialize the buffer for this response handling session
-
     try:
         if streaming:
             # Pass the buffer to a dedicated function for streaming processing
-            response = stream_immediate_response(response, session_id, buffer)
+            response = stream_immediate_response(response, session_id)
             response_dict = json.loads(response)
 
             # Remove the 'immediate_response' key from the dictionary
@@ -186,7 +187,8 @@ def process_response_content(generated_text, session_id, nesting_level):
             return
 
         # Recursive call to process further based on the self_message and function response
-        next_chunk = send_message_to_llm(SYSTEM_MESSAGE, None, response_json['self_message'], function_response)
+        next_chunk = send_message_to_llm(SYSTEM_MESSAGE, None, response_json['self_message'], function_response,
+                                         chat_handler.sessions[session_id])
         return process_response_content(next_chunk, session_id, nesting_level + 1)
 
     except (ValueError, KeyError, json.JSONDecodeError) as e:
@@ -325,10 +327,13 @@ def receive_data(session_id):
         return jsonify({"error": "Session not found"}), 404
 
     # Read the incoming data chunk
+
     data_chunk = request.data.decode('utf-8')  # Decode data assuming it's sent as UTF-8
 
+    message_id = str(uuid.uuid5())
     # Process the received data through the ChatHandler
-    chat_handler.receive_stream_data(session_id, data_chunk)
+    chat_handler.receive_stream_data(session_id, data_chunk, message_id)
+    chat_handler.receive_stream_data(session_id, "[DONE]", message_id)
 
     # Optionally, you might want to confirm receipt or provide additional info
     return jsonify({"status": "Data received", "session_id": session_id})

@@ -81,9 +81,9 @@ class ChatHandler:
         # Accumulate chunks to buffer
         self.temp_buffers[message_id] += data_chunk
 
-        # Check for end marker
-        if "[DONE]" in data_chunk:
-            complete_message = self.temp_buffers.pop(message_id).replace("[DONE]", "")
+        # Strip the buffer of whitespace and check for end marker
+        if self.temp_buffers[message_id].strip().endswith("[DONE]"):
+            complete_message = self.temp_buffers.pop(message_id).replace("[DONE]", "").strip()
             self.sessions[session_id].append({"message": complete_message})
             self.finalize_message(session_id, complete_message)
 
