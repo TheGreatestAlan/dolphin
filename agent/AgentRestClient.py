@@ -1,4 +1,5 @@
 import json
+
 import requests
 
 
@@ -44,23 +45,18 @@ class AgentRestClient:
         except requests.exceptions.RequestException as e:
             raise Exception(f"Failed to stream response: {e}")
 
+
     def _process_stream(self, response):
-        for chunk in response.iter_content(chunk_size=8192):
+        for chunk in response.iter_lines():
             if chunk:
                 chunk_decoded = chunk.decode('utf-8')
-                yield chunk_decoded
-
-    def poll_response(self):
-        if not self.session_id:
-            raise Exception("No active session")
-
-        try:
-            response = requests.get(f"{self.agent_url}/poll_response", params={'session_id': self.session_id})
-            response.raise_for_status()
-            res = json.loads(response.text)
-            return res["message"]
-        except requests.exceptions.RequestException as e:
-            raise Exception(f"Failed to poll response: {e}")
+                try:
+                    data = json.loads(chunk_decoded.split("data: ")[1])
+                    message = data.get("message")
+                    if message:
+                        yield message
+                except (json.JSONDecodeError, IndexError) as e:
+                    print(f"Failed to parse chunk: {e}")
 
     def end_session(self):
         if not self.session_id:

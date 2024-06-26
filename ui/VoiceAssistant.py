@@ -28,6 +28,7 @@ class VoiceAssistant:
 
     def listen_to_stream(self):
         thread = Thread(target=self._stream_agent_response)
+        thread.daemon = True  # Ensure the thread exits when the main program exits
         thread.start()
 
     def _stream_agent_response(self):
@@ -35,15 +36,16 @@ class VoiceAssistant:
             for chunk in self.agent_client.stream_response():
                 if chunk:
                     print(f"Agent response chunk: {chunk}")
-                    self.gui.update_chat("Agent", chunk)
+                    #self.gui.update_chat("Agent", chunk)
                     if self.speech:
                         print(f"Speaking response chunk: {chunk}")
-                        self.speech.speak(chunk)
+                        self.speech.stream_speak(chunk)
         except Exception as e:
             print(f"Failed to stream response from agent: {e}")
 
     def update_chat(self, speaker, message):
         self.gui.update_chat(speaker, message)
+
 
     def run_gui(self):
         self.gui.run()

@@ -2,6 +2,7 @@ import os
 from threading import Thread
 from queue import Queue
 
+
 from tts.GTTSHandler import GTTSHandler
 from tts.PyAudioOutput import PyAudioOutput
 from tts.Speech import Speech
@@ -12,6 +13,7 @@ from ui.VoiceAssistantGUI import VoiceAssistantGUI
 from ui.VoiceAssistant import VoiceAssistant
 
 def main():
+
     print("Initializing components...")
     audio_manager = AudioManager()
     gui_update_queue = Queue()

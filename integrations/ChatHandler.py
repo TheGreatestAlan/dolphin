@@ -135,8 +135,10 @@ class ChatHandler:
         if message:
             if session_id in self.memories:
                 if role == "Human":
+                    print("HUMAN:" + message)
                     self.memories[session_id].save_context({"input": message}, {"output": ""})
                 elif role == "AI":
+                    print("AI:" + message)
                     self.memories[session_id].save_context({"input": ""}, {"output": message})
 
     def store_human_context(self, session_id, message):
