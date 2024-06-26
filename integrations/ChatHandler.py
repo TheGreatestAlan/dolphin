@@ -13,6 +13,7 @@ class ChatHandler:
         self.sessions_file_path = sessions_file_path
         self.result_cache = {}
         self.stream_listeners = {}
+        self.temp_buffers = {}  # Dictionary to hold temporary buffers for messages
 
         # Initialize LangChain Context Manager and Memory
         self.context_manager = ContextManager(memory=Memory())
@@ -68,24 +69,29 @@ class ChatHandler:
         latest_response = self.sessions[session_id][-1]
         return jsonify(latest_response)
 
-    def receive_stream_data(self, session_id, data_chunk):
+    def receive_stream_data(self, session_id, data_chunk, message_id):
         """Process received stream data by appending to session and notifying listeners."""
         if session_id not in self.sessions:
             self.sessions[session_id] = []
 
-        # Identify start and end markers for the streamed message
-        if "[STREAM_START]" in data_chunk:
-            self.stream_buffer = ""
+        # Initialize buffer if not present
+        if message_id not in self.temp_buffers:
+            self.temp_buffers[message_id] = ""
 
-        if "[STREAM_END]" in data_chunk:
-            self.stream_buffer += data_chunk.replace("[STREAM_END]", "")
-            self.sessions[session_id].append({"message": self.stream_buffer})
-            self.context_manager.add_to_context(session_id, self.stream_buffer)  # Add to context
-            self.stream_buffer = None  # Clear buffer after processing
-        else:
-            self.stream_buffer += data_chunk  # Accumulate streamed data
+        # Accumulate chunks to buffer
+        self.temp_buffers[message_id] += data_chunk
+
+        # Check for end marker
+        if "[DONE]" in data_chunk:
+            complete_message = self.temp_buffers.pop(message_id).replace("[DONE]", "")
+            self.sessions[session_id].append({"message": complete_message})
+            self.finalize_message(session_id, complete_message)
 
         self.notify_listeners(session_id, data_chunk)
+
+    def finalize_message(self, session_id, message):
+        """Finalize the message and update the context."""
+        self.context_manager.add_to_context(session_id, message)  # Add complete message to context
 
     def notify_listeners(self, session_id, data):
         """Notify listeners with the given data."""
