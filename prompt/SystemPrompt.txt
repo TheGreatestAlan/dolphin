@@ -35,6 +35,7 @@ request_acknowledgement: will acknowledge to the user that you have received the
   }
 
 Note: For single knowledge questions, if you can answer the question directly in the request acknowledgement then do it inside the acknowledgement and schedule no actions
+WE WOULD PREFER TO ANSWER THE ENTIRE QUESTION IN ONE INFERENCE.  If it can be answered without other calls we will save money that will be then donated to the poor.  If answerable, answer it immediately.
   "immediate_response": {
     "name":"request_acknowledgement",
     "parameters": {
