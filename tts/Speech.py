@@ -63,7 +63,7 @@ class Speech:
                         self._speak_sentence(sentence_buffer)
                     break
 
-                sentence_buffer += text
+                sentence_buffer += text + " "
                 if re.search(r'[.!?,]', text):  # Check if the text contains a sentence-ending punctuation
                     self._speak_sentence(sentence_buffer)
                     sentence_buffer = ""  # Clear buffer after speaking the sentence
@@ -73,10 +73,15 @@ class Speech:
         finally:
             self.audio_manager.release_audio()
 
-    def _speak_sentence(self, sentence: str):
-        print(f"Processing sentence: {sentence}")
-        audio_fp = self.tts_handler.text_to_speech(sentence)
-        self.audio_output.play_audio(audio_fp)
+    def _speak_sentence(self, sentence):
+        if sentence.strip() and re.search(r'\w',
+                                          sentence):  # Check if the sentence is not empty and contains alphanumeric
+            # characters
+            print(f"Processing sentence: {sentence}")
+            audio_fp = self.tts_handler.text_to_speech(sentence)
+            self.audio_output.play_audio(audio_fp)
+        else:
+            print("Empty sentence received, skipping TTS processing.")
 
     def wait_until_done(self):
         self.text_queue.put(None)
