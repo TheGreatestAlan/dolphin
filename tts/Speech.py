@@ -26,8 +26,14 @@ class Speech:
     def _process_chunk(self, chunk: str):
         # Filter out any chunks that contain '[DONE]'
 
-        self.chunk_buffer += chunk
-        self.chunk_buffer = self.chunk_buffer.replace("[DONE]", "")
+        self.chunk_buffer += chunk.replace("[DONE]", "")
+
+        # Check if the buffer ends with a backslash
+        if self.chunk_buffer.endswith("\\"):
+            return
+
+        # Once the buffer does not end with a backslash, replace newlines with spaces
+        self.chunk_buffer = self.chunk_buffer.replace("\n", " ")
 
         # Match words, punctuation, and spaces, keep trailing partial words in buffer
         words = re.findall(r'\S+|\s+', self.chunk_buffer)
@@ -75,9 +81,9 @@ class Speech:
 
     def _speak_sentence(self, sentence):
         if sentence.strip() and re.search(r'\w',
-                                          sentence):  # Check if the sentence is not empty and contains alphanumeric
-            # characters
-            print(f"Processing sentence: {sentence}")
+                                          sentence):  # Check if the sentence is not empty and contains alphanumeric characters
+            # Replace newlines with spaces
+            sentence = sentence.replace("\n", " ").replace("\\n", " ")
             audio_fp = self.tts_handler.text_to_speech(sentence)
             self.audio_output.play_audio(audio_fp)
         else:

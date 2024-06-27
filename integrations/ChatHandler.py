@@ -88,8 +88,6 @@ class ChatHandler:
         """Continuously listen and stream data for a given session."""
 
         def generate():
-            yield "data: {\"message\": \"Connection established.\"}\n\n"
-
             while True:
                 # Stream live data from the stream buffer
                 if session_id in self.stream_buffers:
