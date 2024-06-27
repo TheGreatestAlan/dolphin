@@ -82,14 +82,12 @@ class AudioRecorder:
 
     def save_detected_voice(self):
         if self.current_audio_chunk:
-            print("Saving detected voice chunk...")
             self.myrecording = np.concatenate(self.current_audio_chunk)
             self.current_audio_chunk = []
             temp_filename = f"temp_detected_voice_{int(tm.time())}.wav"
             temp_filepath = os.path.join(self.output_directory, temp_filename)
             write(temp_filepath, self.fs, self.myrecording)
             self.transcription_queue.put(temp_filepath)
-            print(f"Saved detected voice to {temp_filepath}")
 
     def process_transcription_queue(self):
         while True:
@@ -100,14 +98,12 @@ class AudioRecorder:
             os.remove(temp_filepath)
 
     def transcribe_in_thread(self, temp_filepath):
-        print(f"Transcribing file: {temp_filepath}")
         transcription = self.audioTranscriber.transcribe_audio(temp_filepath)
         if transcription.strip():
             print(f"Transcription result: {transcription}")
             self.voice_assistant.send_to_agent(transcription)
 
     def start_recording(self):
-        print("Starting recording...")
         self.recording = True
         self.myrecording = None
 
@@ -125,8 +121,6 @@ class AudioRecorder:
                 blocksize=int(self.fs * 0.05)) as stream:
             while self.continue_recording:
                 tm.sleep(0.1)
-                if not self.audio_manager.record_event.is_set():
-                    print("Recording paused by AudioManager")
 
         self.audio_manager.release_audio()
 

@@ -35,10 +35,8 @@ class VoiceAssistant:
         try:
             for chunk in self.agent_client.stream_response():
                 if chunk:
-                    print(f"Agent response chunk: {chunk}")
                     #self.gui.update_chat("Agent", chunk)
                     if self.speech:
-                        print(f"Speaking response chunk: {chunk}")
                         self.speech.stream_speak(chunk)
         except Exception as e:
             print(f"Failed to stream response from agent: {e}")
