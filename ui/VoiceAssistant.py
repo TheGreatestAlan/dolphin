@@ -6,6 +6,7 @@ class VoiceAssistant:
         self.speech = speech
         self.gui = gui
         self.session_id = self.start_session()
+        self.listen_to_stream()  # Start listening to the stream once the session is established
 
     def start_session(self):
         try:
@@ -22,30 +23,27 @@ class VoiceAssistant:
     def _send_to_agent(self, transcription):
         try:
             self.agent_client.send_prompt(transcription)
-            self.poll_agent_response()
         except Exception as e:
             print(f"Failed to send prompt to agent: {e}")
 
-    def poll_agent_response(self):
-        thread = Thread(target=self._poll_agent_response)
+    def listen_to_stream(self):
+        thread = Thread(target=self._stream_agent_response)
+        thread.daemon = True  # Ensure the thread exits when the main program exits
         thread.start()
 
-    def _poll_agent_response(self):
+    def _stream_agent_response(self):
         try:
-            while True:
-                response = self.agent_client.poll_response()
-                if response:
-                    print(f"Agent response: {response}")
-                    self.gui.update_chat("Agent", response)
+            for chunk in self.agent_client.stream_response():
+                if chunk:
+                    #self.gui.update_chat("Agent", chunk)
                     if self.speech:
-                        print(f"Speaking response: {response}")
-                        self.speech.speak(response)
-                    break
+                        self.speech.stream_speak(chunk)
         except Exception as e:
-            print(f"Failed to poll response from agent: {e}")
+            print(f"Failed to stream response from agent: {e}")
 
     def update_chat(self, speaker, message):
         self.gui.update_chat(speaker, message)
+
 
     def run_gui(self):
         self.gui.run()

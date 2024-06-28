@@ -34,17 +34,29 @@ class AgentRestClient:
         except requests.exceptions.RequestException as e:
             raise Exception(f"Failed to send message: {e}")
 
-    def poll_response(self):
+    def stream_response(self):
         if not self.session_id:
             raise Exception("No active session")
 
         try:
-            response = requests.get(f"{self.agent_url}/poll_response", params={'session_id': self.session_id})
+            response = requests.get(f"{self.agent_url}/stream/{self.session_id}", stream=True)
             response.raise_for_status()
-            res = json.loads(response.text)
-            return res["message"]
+            yield from self._process_stream(response)
         except requests.exceptions.RequestException as e:
-            raise Exception(f"Failed to poll response: {e}")
+            raise Exception(f"Failed to stream response: {e}")
+
+
+    def _process_stream(self, response):
+        for chunk in response.iter_lines():
+            if chunk:
+                chunk_decoded = chunk.decode('utf-8')
+                try:
+                    data = json.loads(chunk_decoded.split("data: ")[1])
+                    message = data.get("message")
+                    if message:
+                        yield message
+                except (json.JSONDecodeError, IndexError) as e:
+                    print(f"Failed to parse chunk: {e}")
 
     def end_session(self):
         if not self.session_id:
@@ -61,3 +73,22 @@ class AgentRestClient:
             return "Session ended."
         except requests.exceptions.RequestException as e:
             raise Exception(f"Failed to end session: {e}")
+
+
+# Example usage:
+if __name__ == '__main__':
+    agent_client = AgentRestClient("http://127.0.0.1:5000")
+    session_id = agent_client.start_session()
+    print(f"Started session: {session_id}")
+
+    user_message = "Hello, how are you?"
+    print(f"Sending message: {user_message}")
+    response = agent_client.send_prompt(user_message)
+    print(f"Response: {response}")
+
+    print("Streaming response:")
+    for chunk in agent_client.stream_response():
+        print(chunk, end='', flush=True)
+
+    agent_client.end_session()
+    print("Session ended.")

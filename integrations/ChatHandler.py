@@ -88,8 +88,6 @@ class ChatHandler:
         """Continuously listen and stream data for a given session."""
 
         def generate():
-            yield "data: {\"message\": \"Connection established.\"}\n\n"
-
             while True:
                 # Stream live data from the stream buffer
                 if session_id in self.stream_buffers:
@@ -135,8 +133,10 @@ class ChatHandler:
         if message:
             if session_id in self.memories:
                 if role == "Human":
+                    print("HUMAN:" + message)
                     self.memories[session_id].save_context({"input": message}, {"output": ""})
                 elif role == "AI":
+                    print("AI:" + message)
                     self.memories[session_id].save_context({"input": ""}, {"output": message})
 
     def store_human_context(self, session_id, message):
