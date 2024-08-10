@@ -7,6 +7,7 @@ from langchain_core.messages import HumanMessage, AIMessage
 
 from FunctionResponse import FunctionResponse, Status
 from integrations.StreamManager import StreamManager
+from tts.CoquiTTSHandler import CoquiTTSHandler
 
 
 class ChatHandler:
@@ -16,7 +17,9 @@ class ChatHandler:
         self.result_cache = {}
         self.memories = {}  # Dictionary to hold ConversationBufferMemory instances
 
-        self.stream_manager = StreamManager()  # Initialize the StreamManager
+        model_name = "tts_models/en/jenny/jenny"
+        tts_handler = CoquiTTSHandler(model_name)
+        self.stream_manager = StreamManager(tts_handler)  # Initialize the StreamManager
 
         self.load_sessions_from_file()
 
@@ -82,8 +85,8 @@ class ChatHandler:
         latest_response = self.sessions[session_id][-1]
         return jsonify(latest_response)
 
-    def listen_to_stream(self, session_id):
-        return self.stream_manager.listen_to_stream(session_id)
+    def listen_to_text_stream(self, session_id):
+        return self.stream_manager.listen_to_text_stream(session_id)
 
     def receive_stream_data(self, session_id, data_chunk, message_id, role="AI"):
         """Process received stream data by appending to session and notifying listeners."""
