@@ -18,3 +18,5 @@ models/
 dev/
 submodules/
 venv/
+
+*_old.py
