@@ -1,12 +1,12 @@
 import json
 import os
-import time
 
-from flask import jsonify, Response
+from flask import jsonify
 from langchain.memory import ConversationBufferMemory
-from langchain.schema import HumanMessage, AIMessage
+from langchain_core.messages import HumanMessage, AIMessage
 
 from FunctionResponse import FunctionResponse, Status
+from integrations.StreamManager import StreamManager
 
 
 class ChatHandler:
@@ -14,11 +14,9 @@ class ChatHandler:
         self.sessions = {}
         self.sessions_file_path = sessions_file_path
         self.result_cache = {}
-        self.stream_listeners = {}
-        self.stream_buffers = {}  # Dictionary to hold stream buffers for messages by session_id
-        self.temp_buffers = {}  # Dictionary to hold temporary buffers for messages by session_id
-        self.session_buffers = {}  # Dictionary to hold session buffers for messages by session_id
         self.memories = {}  # Dictionary to hold ConversationBufferMemory instances
+
+        self.stream_manager = StreamManager()  # Initialize the StreamManager
 
         self.load_sessions_from_file()
 
@@ -85,48 +83,11 @@ class ChatHandler:
         return jsonify(latest_response)
 
     def listen_to_stream(self, session_id):
-        """Continuously listen and stream data for a given session."""
-
-        def generate():
-            while True:
-                # Stream live data from the stream buffer
-                if session_id in self.stream_buffers:
-                    while self.stream_buffers[session_id]:
-                        data_chunk = self.stream_buffers[session_id].pop(0)
-                        yield f"data: {json.dumps({'message': data_chunk})}\n\n"
-
-                time.sleep(1)
-
-        return Response(generate(), mimetype='text/event-stream')
+        return self.stream_manager.listen_to_stream(session_id)
 
     def receive_stream_data(self, session_id, data_chunk, message_id, role="AI"):
         """Process received stream data by appending to session and notifying listeners."""
-        if session_id not in self.sessions:
-            self.sessions[session_id] = []
-
-        # Initialize session buffer if not present
-        if session_id not in self.temp_buffers:
-            self.temp_buffers[session_id] = {}
-
-        # Initialize message buffer if not present
-        if message_id not in self.temp_buffers[session_id]:
-            self.temp_buffers[session_id][message_id] = ""
-
-        # Accumulate chunks to temp buffer
-        self.temp_buffers[session_id][message_id] += data_chunk
-
-        # Copy to stream buffer
-        if session_id not in self.stream_buffers:
-            self.stream_buffers[session_id] = []
-        self.stream_buffers[session_id].append(data_chunk)
-
-        # Strip the buffer of whitespace and check for end marker
-        if self.temp_buffers[session_id][message_id].strip().endswith("[DONE]"):
-            complete_message = self.temp_buffers[session_id].pop(message_id).replace("[DONE]", "").strip()
-            if session_id not in self.session_buffers:
-                self.session_buffers[session_id] = []
-            self.session_buffers[session_id].append({"role": role, "message": complete_message})
-            self.finalize_message(session_id, complete_message, role)
+        self.stream_manager.receive_stream_data(session_id, data_chunk, message_id, role)
 
     def finalize_message(self, session_id, message, role):
         """Finalize the message and update the context."""
@@ -157,20 +118,6 @@ class ChatHandler:
             context = self.memories[session_id].load_memory_variables({})
             return context.get("history", "")
         return ""
-
-    def notify_listeners(self, session_id, data):
-        """Notify listeners with the given data."""
-        if session_id in self.stream_listeners:
-            formatted_data = f"data: {json.dumps({'message': data})}\n\n"
-            for listener in self.stream_listeners[session_id]:
-                listener.send(formatted_data)  # Ensure listener.send handles SSE formatting
-
-    def register_listener(self, session_id, listener):
-        self.stream_listeners[session_id] = listener
-
-    def unregister_listener(self, session_id):
-        if session_id in self.stream_listeners:
-            del self.stream_listeners[session_id]
 
     def start_session(self):
         session_id = os.urandom(16).hex()
