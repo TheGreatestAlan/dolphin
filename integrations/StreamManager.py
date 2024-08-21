@@ -4,9 +4,16 @@ from flask import Response
 from queue import Queue
 from typing import Optional
 
-from tts.SpeachInterfaces import TTSInterface
+from tts.SpeechInterfaces import TTSInterface
 
 
+# HEMMINGWAY BRIDGE
+# 2024-08-21
+# CREATE NEW STREAM MANAGER THAT SEPARATES OUT THE CONCERNS MORE.  STREAM MANAGER SHOULDN'T
+# BE ADDING THINGS TO THE STREAM.  IT SHOULD JUST BE SUPPLYING AND MANAGING THE BUFFERS THAT
+# HOLD THOSE THINGS.  WE ALSO NEED TO CONSIDER THAT EACH BUFFER IS PROBABLY A SEPARATE THREAD
+# BUT YOU"LL NEED TO THINK THAT THROUGH.  BUT I BET A LOT OF THE CLEANUP ON THE THREADING HAPPENS
+# HERE
 class StreamManager:
     def __init__(self, tts: Optional[TTSInterface] = None):
         self.stream_buffers = {}  # Dictionary to hold stream buffers for messages by session_id
@@ -40,17 +47,22 @@ class StreamManager:
 
         return Response(generate(), mimetype='text/event-stream')
 
-    def start_audio_streaming(self, session_id):
-        """Continuously stream audio data for a given session."""
-        def generate():
-            while True:
-                if session_id in self.audio_buffers:
-                    while self.audio_buffers[session_id]:
-                        audio_chunk = self.audio_buffers[session_id].pop(0)
-                        yield f"data: {json.dumps({'message': audio_chunk})}\n\n"
-                time.sleep(1)
+    def generate_audio_stream(self, session_id):
+        """Generator to stream audio data for a given session."""
+        chunk_size = 1024
+        while True:
+            if session_id in self.audio_buffers:
+                while self.audio_buffers[session_id]:
+                    audio_chunk = self.audio_buffers[session_id].pop(0)
+                    yield audio_chunk  # Yield raw audio data directly
+            time.sleep(1)
 
-        return Response(generate(), mimetype='text/event-stream')
+    def start_audio_streaming(self, session_id):
+        """Flask route handler to stream audio data."""
+        if session_id not in self.audio_buffers:
+            return "Session ID not found", 404
+
+        return Response(self.generate_audio_stream(session_id), mimetype='audio/mpeg')
 
     def listen_to_text_stream(self, session_id):
         """Listen to the text stream and start streaming text data for the given session."""
@@ -101,7 +113,7 @@ class StreamManager:
         # Check if there are listeners for the audio stream and if TTS is available
         if session_id in self.audio_listeners and self.audio_listeners[session_id] and self.tts:
             audio_chunk = self.tts.text_to_speech(data_chunk)
-            self.add_to_audio_buffer(session_id, audio_chunk)
+            self.add_to_audio_buffer(session_id, audio_chunk)  # MP3 data is added directly
 
         if self.temp_buffers[session_id][message_id].strip().endswith("[DONE]"):
             complete_message = self.temp_buffers[session_id].pop(message_id).replace("[DONE]", "").strip()

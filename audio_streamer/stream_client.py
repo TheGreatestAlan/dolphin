@@ -1,7 +1,6 @@
 import requests
 import pyaudio
 import wave
-from io import BytesIO
 
 def download_audio_from_server(url, output_file):
     print("Starting to download audio from server...")

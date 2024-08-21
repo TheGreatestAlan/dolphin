@@ -13,9 +13,12 @@ assistant: Assistant = LLMAssistant(chat_handler)
 
 
 @app.route('/stream/<session_id>')
-def stream(session_id):
+def stream_text (session_id):
     return chat_handler.listen_to_text_stream(session_id)
 
+@app.route('/streamaudio/<session_id>')
+def stream_audio(session_id):
+    return chat_handler.listen_to_audio_stream(session_id)
 
 @app.route('/start_session', methods=['POST'])
 def start_session():

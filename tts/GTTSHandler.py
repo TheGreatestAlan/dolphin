@@ -6,7 +6,7 @@ import wave
 from gtts import gTTS
 from pydub import AudioSegment
 
-from tts.SpeachInterfaces import TTSInterface
+from tts.SpeechInterfaces import TTSInterface
 
 
 class GTTSHandler(TTSInterface):

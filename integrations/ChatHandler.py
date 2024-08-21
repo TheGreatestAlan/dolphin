@@ -6,8 +6,8 @@ from langchain.memory import ConversationBufferMemory
 from langchain_core.messages import HumanMessage, AIMessage
 
 from FunctionResponse import FunctionResponse, Status
+from audio_streamer.stream_text import OpenAITTSPlayer
 from integrations.StreamManager import StreamManager
-from tts.CoquiTTSHandler import CoquiTTSHandler
 
 
 class ChatHandler:
@@ -17,8 +17,9 @@ class ChatHandler:
         self.result_cache = {}
         self.memories = {}  # Dictionary to hold ConversationBufferMemory instances
 
-        model_name = "tts_models/en/jenny/jenny"
-        tts_handler = CoquiTTSHandler(model_name)
+        #model_name = "tts_models/en/jenny/jenny"
+        #tts_handler = CoquiTTSHandler(model_name)
+        tts_handler = OpenAITTSPlayer()
         self.stream_manager = StreamManager(tts_handler)  # Initialize the StreamManager
 
         self.load_sessions_from_file()
@@ -88,6 +89,9 @@ class ChatHandler:
     def listen_to_text_stream(self, session_id):
         return self.stream_manager.listen_to_text_stream(session_id)
 
+    def listen_to_audio_stream(self, session_id):
+        return self.stream_manager.listen_to_audio_stream(session_id)
+
     def receive_stream_data(self, session_id, data_chunk, message_id, role="AI"):
         """Process received stream data by appending to session and notifying listeners."""
         self.stream_manager.receive_stream_data(session_id, data_chunk, message_id, role)
@@ -152,3 +156,44 @@ class ChatHandler:
             else:
                 memory.chat_memory.add_message(AIMessage(content=msg["content"]))
         return memory
+
+
+import threading
+import sounddevice as sd
+
+if __name__ == "__main__":
+    # Instantiate the ChatHandler
+    chat_handler = ChatHandler()
+
+    # Start a new session
+    session_id = chat_handler.start_session()
+
+    # Define a player function that will continuously listen and play audio samples
+    def audio_player():
+        for audio_sample, sample_rate in chat_handler.listen_to_audio_stream(session_id):
+            if audio_sample is not None:
+                print("Playing audio sample...")
+                sd.play(audio_sample, samplerate=24000)
+                sd.wait()
+            else:
+                break
+
+    # Start the audio player in a separate thread
+    player_thread = threading.Thread(target=audio_player)
+    player_thread.start()
+
+    # Send a test sentence to be streamed as audio
+    test_sentence = "This is a test sentence for streaming text-to-speech."
+    chat_handler.send_message(session_id, test_sentence)
+
+    # Simulate receiving and streaming the audio
+    chat_handler.receive_stream_data(session_id, test_sentence, message_id="test_message_id")
+
+    # Finalize the message
+    chat_handler.finalize_message(session_id, test_sentence, role="AI")
+
+    print(f"Test sentence '{test_sentence}' has been processed and streamed as audio.")
+
+    # Wait for the player thread to finish
+    player_thread.join()
+    print("Audio playback complete.")

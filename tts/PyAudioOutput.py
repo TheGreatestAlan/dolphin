@@ -1,7 +1,7 @@
 import pyaudio
 import wave
 
-from tts.SpeachInterfaces import AudioOutputInterface
+from tts.SpeechInterfaces import AudioOutputInterface
 
 
 class PyAudioOutput(AudioOutputInterface):

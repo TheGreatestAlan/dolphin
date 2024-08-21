@@ -6,7 +6,9 @@ import os
 import threading
 
 from agent.AgentInterface import AgentInterface
-
+from pydub import AudioSegment
+from pydub.playback import play
+from io import BytesIO
 
 class ChatApp(AgentInterface):
     def __init__(self, root):
@@ -17,7 +19,7 @@ class ChatApp(AgentInterface):
         self.agent_url = os.getenv('AGENT_URL', 'http://127.0.0.1:5000')
 
         self.chat_window = scrolledtext.ScrolledText(root, wrap=tk.WORD, state='disabled')
-        self.chat_window.grid(row=0, column=0, columnspan=2, padx=10, pady=10)
+        self.chat_window.grid(row=0, column=0, columnspan=3, padx=10, pady=10)
 
         self.prompt_entry = tk.Entry(root, width=80)
         self.prompt_entry.grid(row=1, column=0, padx=10, pady=10)
@@ -25,6 +27,9 @@ class ChatApp(AgentInterface):
 
         self.send_button = tk.Button(root, text="Send", command=self.send_prompt)
         self.send_button.grid(row=1, column=1, padx=10, pady=10)
+
+        self.audio_button = tk.Button(root, text="Start Audio", command=self.listen_to_audio_stream)
+        self.audio_button.grid(row=1, column=2, padx=10, pady=10)
 
         self.message_history = []
         self.current_message = ""
@@ -94,6 +99,26 @@ class ChatApp(AgentInterface):
         thread = threading.Thread(target=stream)
         thread.daemon = True
         thread.start()
+
+    def listen_to_audio_stream(self):
+        def stream_audio():
+            try:
+                response = requests.get(f"{self.agent_url}/streamaudio/{self.session_id}", stream=True)
+
+                for chunk in response.iter_content(chunk_size=1024):
+                    if chunk:
+                        self.play_audio_chunk(chunk)
+
+            except requests.exceptions.RequestException as e:
+                self.append_chat("System", f"Failed to connect to audio stream: {e}")
+
+        thread = threading.Thread(target=stream_audio)
+        thread.daemon = True
+        thread.start()
+
+    def play_audio_chunk(self, chunk):
+        audio = AudioSegment.from_file(BytesIO(chunk), format="wav")
+        play(audio)
 
     def update_chat_display(self):
         def update():

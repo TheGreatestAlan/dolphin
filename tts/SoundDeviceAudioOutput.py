@@ -2,7 +2,7 @@ import sounddevice as sd
 import numpy as np
 import soundfile as sf
 
-from tts.SpeachInterfaces import AudioOutputInterface
+from tts.SpeechInterfaces import AudioOutputInterface
 
 
 class SoundDeviceAudioOutput(AudioOutputInterface):
