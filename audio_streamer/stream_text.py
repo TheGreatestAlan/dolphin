@@ -16,7 +16,7 @@ class OpenAITTSPlayer:
     def __init__(self):
 
         # Read API key from environment variables
-        api_key = os.getenv('OPENAI_API_KEY', 'sREMOVED')
+        api_key = os.getenv('OPENAI_API_KEY', '')
         if not api_key:
             raise ValueError("OpenAI API key not found in environment variables.")
         self.client = OpenAI(api_key=api_key)
