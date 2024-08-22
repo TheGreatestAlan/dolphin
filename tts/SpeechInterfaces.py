@@ -6,7 +6,9 @@ from abc import ABC, abstractmethod
 class TTSInterface(ABC):
 
     @abstractmethod
-    def stream_text_to_speech(self, text_stream: queue.Queue):
+    def add_text_to_queue(self, text: str):
+        pass
+    def get_audio_buffer(self):
         pass
 class AudioOutputInterface(ABC):
     @abstractmethod

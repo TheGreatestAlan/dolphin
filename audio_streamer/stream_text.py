@@ -7,8 +7,6 @@ from openai import OpenAI
 from pydub import AudioSegment
 from io import BytesIO
 
-#HEMMINGWAY BRIDGE, need to figure out what type of file this is so that I can stream it properly
-# it's already different because it's an mp3 instead of a wav.  It wants to use ffmpeg, but do I need to?
 from pydub.utils import which
 
 
