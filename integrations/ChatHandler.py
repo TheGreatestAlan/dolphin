@@ -9,12 +9,14 @@ from integrations.StreamManager import StreamManager
 
 
 #HEMMINGWAY BRIDGE:
-# OK you finished the StreamManager piece, and you think the concerns have been separated
-# Now you need to go into the chat handler, figure out exactly what it's doing, and make
-# sure that it's passing back the right things.  I believe it'll handle a lot of the
-# history, and role stuff. After that you'll need to look into perhaps some sort of
-# notifier in the flast rest stuff and see how you're going to go from a queue to
-# actually streaming over a rest service
+# You need to store the messages in memory when you finalize, you also need to handle the [DONE] flag
+# correctly.  Which right now, is used a couple ways.  In the ChatHandler, that signifies that the
+# message is done and you can save it to memory.  In the ChatApp it also uses it to signify message
+# completion as well.  And in the audio streaming portion, it needs to be ignored
+#
+# Before you do anything else with the chat streaming you should probably fix this so that it still works with
+# the ChatApp as is.  That requires handling the queue that comes out of this now and in the flask app
+# doing whatever it is that needs to be done to stream text.
 class ChatHandler:
     def __init__(self, sessions_file_path='sessions.json'):
         self.sessions = {}
@@ -23,8 +25,6 @@ class ChatHandler:
         self.memories = {}  # Dictionary to hold ConversationBufferMemory instances
         self.temp_buffers = {}  # Dictionary to hold temporary buffers for messages by session_id
 
-        #model_name = "tts_models/en/jenny/jenny"
-        #tts_handler = CoquiTTSHandler(model_name)
         self.stream_manager = StreamManager()  # Initialize the StreamManager
 
         self.load_sessions_from_file()
@@ -90,25 +90,28 @@ class ChatHandler:
     def listen_to_audio_stream(self, session_id):
         return self.stream_manager.listen_to_audio_stream(session_id)
 
-    def receive_stream_data(self, session_id, data_chunk, message_id, role="AI"):
+    def receive_stream_data(self, session_id, data_chunk, message_id):
         """Process received stream data by appending to session and notifying listeners."""
-        self.stream_manager.receive_stream_data(session_id, data_chunk, message_id, role)
+        self.parse_llm_stream(session_id, data_chunk, message_id)
 
     def parse_llm_stream(self, session_id, data_chunk, message_id):
-        """Parse incoming LLM stream data and accumulate it until the complete message is received."""
+        """Parse incoming LLM stream data and immediately send it back without waiting for [DONE]."""
         if session_id not in self.temp_buffers:
             self.temp_buffers[session_id] = {}
 
         if message_id not in self.temp_buffers[session_id]:
             self.temp_buffers[session_id][message_id] = ""
 
+        # Accumulate data chunk
         self.temp_buffers[session_id][message_id] += data_chunk
 
-        # Check if the message is complete
+        self.stream_manager.add_to_text_buffer(session_id, data_chunk)
+
+        # If the message is complete, finalize it
         if self.temp_buffers[session_id][message_id].strip().endswith("[DONE]"):
             complete_message = self.temp_buffers[session_id][message_id].replace("[DONE]", "").strip()
             self.temp_buffers[session_id].pop(message_id)  # Clear the temp buffer
-            self.stream_manager.add_completed_message(session_id, complete_message)
+            self.finalize_message(session_id, complete_message, "AI")
 
     def finalize_message(self, session_id, message, role):
         """Finalize the message and update the context."""
