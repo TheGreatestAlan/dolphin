@@ -1,26 +1,31 @@
 import json
 import os
 
-from flask import jsonify
 from langchain.memory import ConversationBufferMemory
 from langchain_core.messages import HumanMessage, AIMessage
 
 from FunctionResponse import FunctionResponse, Status
-from audio_streamer.stream_text import OpenAITTSPlayer
 from integrations.StreamManager import StreamManager
 
 
+#HEMMINGWAY BRIDGE:
+# OK you finished the StreamManager piece, and you think the concerns have been separated
+# Now you need to go into the chat handler, figure out exactly what it's doing, and make
+# sure that it's passing back the right things.  I believe it'll handle a lot of the
+# history, and role stuff. After that you'll need to look into perhaps some sort of
+# notifier in the flast rest stuff and see how you're going to go from a queue to
+# actually streaming over a rest service
 class ChatHandler:
     def __init__(self, sessions_file_path='sessions.json'):
         self.sessions = {}
         self.sessions_file_path = sessions_file_path
         self.result_cache = {}
         self.memories = {}  # Dictionary to hold ConversationBufferMemory instances
+        self.temp_buffers = {}  # Dictionary to hold temporary buffers for messages by session_id
 
         #model_name = "tts_models/en/jenny/jenny"
         #tts_handler = CoquiTTSHandler(model_name)
-        tts_handler = OpenAITTSPlayer()
-        self.stream_manager = StreamManager(tts_handler)  # Initialize the StreamManager
+        self.stream_manager = StreamManager()  # Initialize the StreamManager
 
         self.load_sessions_from_file()
 
@@ -79,13 +84,6 @@ class ChatHandler:
         else:
             print("Ignored empty message.")
 
-    def poll_response(self, session_id):
-        if len(self.sessions.get(session_id, [])) == 0:
-            return jsonify({}), 204  # Ensure valid JSON response
-
-        latest_response = self.sessions[session_id][-1]
-        return jsonify(latest_response)
-
     def listen_to_text_stream(self, session_id):
         return self.stream_manager.listen_to_text_stream(session_id)
 
@@ -95,6 +93,22 @@ class ChatHandler:
     def receive_stream_data(self, session_id, data_chunk, message_id, role="AI"):
         """Process received stream data by appending to session and notifying listeners."""
         self.stream_manager.receive_stream_data(session_id, data_chunk, message_id, role)
+
+    def parse_llm_stream(self, session_id, data_chunk, message_id):
+        """Parse incoming LLM stream data and accumulate it until the complete message is received."""
+        if session_id not in self.temp_buffers:
+            self.temp_buffers[session_id] = {}
+
+        if message_id not in self.temp_buffers[session_id]:
+            self.temp_buffers[session_id][message_id] = ""
+
+        self.temp_buffers[session_id][message_id] += data_chunk
+
+        # Check if the message is complete
+        if self.temp_buffers[session_id][message_id].strip().endswith("[DONE]"):
+            complete_message = self.temp_buffers[session_id][message_id].replace("[DONE]", "").strip()
+            self.temp_buffers[session_id].pop(message_id)  # Clear the temp buffer
+            self.stream_manager.add_completed_message(session_id, complete_message)
 
     def finalize_message(self, session_id, message, role):
         """Finalize the message and update the context."""

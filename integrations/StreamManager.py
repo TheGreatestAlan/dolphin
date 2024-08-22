@@ -9,7 +9,6 @@ class StreamManager:
     def __init__(self):
         self.text_buffers = {}  # Dictionary to hold stream buffers for messages by session_id
         self.tts_instances = {}  # Dictionary to hold OpenAITTS instances by session_id
-        self.temp_buffers = {}  # Dictionary to hold temporary buffers for messages by session_id
         self.stream_listeners = {}  # Dictionary to hold listeners for text streams
         self.audio_listeners = {}  # Dictionary to hold listeners for audio streams
 
@@ -68,3 +67,24 @@ class StreamManager:
                 del self.text_buffers[session_id]  # Remove text buffer
         if session_id in self.temp_buffers:
             del self.temp_buffers[session_id]  # Remove temp buffer
+
+    def parse_llm_stream(self, session_id, data_chunk, message_id):
+        """Parse incoming LLM stream data and accumulate it until the complete message is received."""
+        if session_id not in self.temp_buffers:
+            self.temp_buffers[session_id] = {}
+
+        if message_id not in self.temp_buffers[session_id]:
+            self.temp_buffers[session_id][message_id] = ""
+
+        self.temp_buffers[session_id][message_id] += data_chunk
+
+        # Check if the message is complete
+        if self.temp_buffers[session_id][message_id].strip().endswith("[DONE]"):
+            complete_message = self.temp_buffers[session_id][message_id].replace("[DONE]", "").strip()
+            self.temp_buffers[session_id].pop(message_id)  # Clear the temp buffer
+            self.add_completed_message(session_id, complete_message)
+
+    def receive_stream_data(self, session_id, data_chunk, message_id):
+        """Receive and parse stream data for LLM, accumulating until a complete message is received."""
+        self.parse_llm_stream(session_id, data_chunk, message_id)
+
