@@ -8,24 +8,15 @@ from FunctionResponse import FunctionResponse, Status
 from integrations.StreamManager import StreamManager
 
 
-#HEMMINGWAY BRIDGE:
-# You need to store the messages in memory when you finalize, you also need to handle the [DONE] flag
-# correctly.  Which right now, is used a couple ways.  In the ChatHandler, that signifies that the
-# message is done and you can save it to memory.  In the ChatApp it also uses it to signify message
-# completion as well.  And in the audio streaming portion, it needs to be ignored
-#
-# Before you do anything else with the chat streaming you should probably fix this so that it still works with
-# the ChatApp as is.  That requires handling the queue that comes out of this now and in the flask app
-# doing whatever it is that needs to be done to stream text.
 class ChatHandler:
-    def __init__(self, sessions_file_path='sessions.json'):
+    def __init__(self, stream_manager: StreamManager, sessions_file_path='sessions.json'):
         self.sessions = {}
         self.sessions_file_path = sessions_file_path
         self.result_cache = {}
         self.memories = {}  # Dictionary to hold ConversationBufferMemory instances
         self.temp_buffers = {}  # Dictionary to hold temporary buffers for messages by session_id
 
-        self.stream_manager = StreamManager()  # Initialize the StreamManager
+        self.stream_manager = stream_manager
 
         self.load_sessions_from_file()
 
@@ -83,12 +74,6 @@ class ChatHandler:
             return FunctionResponse(Status.SUCCESS, "completed")
         else:
             print("Ignored empty message.")
-
-    def listen_to_text_stream(self, session_id):
-        return self.stream_manager.listen_to_text_stream(session_id)
-
-    def listen_to_audio_stream(self, session_id):
-        return self.stream_manager.listen_to_audio_stream(session_id)
 
     def receive_stream_data(self, session_id, data_chunk, message_id):
         """Process received stream data by appending to session and notifying listeners."""
@@ -173,44 +158,3 @@ class ChatHandler:
             else:
                 memory.chat_memory.add_message(AIMessage(content=msg["content"]))
         return memory
-
-
-import threading
-import sounddevice as sd
-
-if __name__ == "__main__":
-    # Instantiate the ChatHandler
-    chat_handler = ChatHandler()
-
-    # Start a new session
-    session_id = chat_handler.start_session()
-
-    # Define a player function that will continuously listen and play audio samples
-    def audio_player():
-        for audio_sample, sample_rate in chat_handler.listen_to_audio_stream(session_id):
-            if audio_sample is not None:
-                print("Playing audio sample...")
-                sd.play(audio_sample, samplerate=24000)
-                sd.wait()
-            else:
-                break
-
-    # Start the audio player in a separate thread
-    player_thread = threading.Thread(target=audio_player)
-    player_thread.start()
-
-    # Send a test sentence to be streamed as audio
-    test_sentence = "This is a test sentence for streaming text-to-speech."
-    chat_handler.send_message(session_id, test_sentence)
-
-    # Simulate receiving and streaming the audio
-    chat_handler.receive_stream_data(session_id, test_sentence, message_id="test_message_id")
-
-    # Finalize the message
-    chat_handler.finalize_message(session_id, test_sentence, role="AI")
-
-    print(f"Test sentence '{test_sentence}' has been processed and streamed as audio.")
-
-    # Wait for the player thread to finish
-    player_thread.join()
-    print("Audio playback complete.")

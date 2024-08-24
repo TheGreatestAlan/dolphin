@@ -6,14 +6,17 @@ from agent.assistant import Assistant
 from integrations.ChatHandler import ChatHandler
 from flask import Flask, request, jsonify, Response
 
+from integrations.StreamManager import StreamManager
+
 app = Flask(__name__)
 
 sessions_file_path = 'sessions.json'
-chat_handler = ChatHandler(sessions_file_path)
+stream_manager = StreamManager()
+chat_handler = ChatHandler(stream_manager, sessions_file_path)
 assistant: Assistant = LLMAssistant(chat_handler)
 
 def stream_text_in_thread(session_id):
-    text_queue = chat_handler.listen_to_text_stream(session_id)
+    text_queue = stream_manager.listen_to_text_stream(session_id)
 
     def generate():
         while True:
@@ -32,7 +35,7 @@ def stream_text(session_id):
 @app.route('/streamaudio/<session_id>')
 def stream_audio(session_id):
     print("streaming audio")
-    audio_buffer = chat_handler.listen_to_audio_stream(session_id)
+    audio_buffer = stream_manager.listen_to_audio_stream(session_id)
 
     def generate_audio():
         while True:
