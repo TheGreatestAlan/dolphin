@@ -31,7 +31,32 @@ def stream_text(session_id):
 
 @app.route('/streamaudio/<session_id>')
 def stream_audio(session_id):
-    return chat_handler.listen_to_audio_stream(session_id)
+    print("streaming audio")
+    audio_buffer = chat_handler.listen_to_audio_stream(session_id)
+
+    def generate_audio():
+        while True:
+            print("streaming buffer")
+            audio_chunk = audio_buffer.get()  # Block until a new audio chunk is available
+            if audio_chunk is None:  # Sentinel value to stop the stream
+                break
+            samples, sample_rate = audio_chunk
+            # Convert numpy array to bytes
+            audio_bytes = samples.tobytes()
+            chunk_size = len(audio_bytes)  # Measure the size of the chunk in bytes
+            print(f"Generated chunk size: {chunk_size} bytes")  # Log the chunk size
+            yield audio_bytes
+
+    def stream_audio_thread():
+        return Response(generate_audio(), mimetype='audio/raw')
+
+    # Start the streaming in a new thread
+    audio_thread = Thread(target=stream_audio_thread)
+    audio_thread.daemon = True
+    audio_thread.start()
+
+    # Return the response to initiate the stream
+    return stream_audio_thread()
 
 @app.route('/start_session', methods=['POST'])
 def start_session():

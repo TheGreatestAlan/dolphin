@@ -14,6 +14,8 @@ class StreamManager:
         """Add a data chunk to the queue for a specific session."""
         if session_id in self.text_buffers:
             self.text_buffers[session_id].put(data_chunk)
+        if session_id in self.tts_instances:
+            self.get_tts_instance(session_id).add_text_to_queue(data_chunk)
 
     def get_tts_instance(self, session_id):
         """Retrieve or create an OpenAITTS instance for the session."""

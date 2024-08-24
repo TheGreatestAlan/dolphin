@@ -1,9 +1,13 @@
 import json
 import tkinter as tk
 from tkinter import scrolledtext
+
+import numpy as np
 import requests
 import os
 import threading
+import sounddevice as sd
+
 
 from agent.AgentInterface import AgentInterface
 from pydub import AudioSegment
@@ -105,9 +109,23 @@ class ChatApp(AgentInterface):
             try:
                 response = requests.get(f"{self.agent_url}/streamaudio/{self.session_id}", stream=True)
 
-                for chunk in response.iter_content(chunk_size=1024):
+                audio_buffer = []  # Buffer to accumulate audio data
+                buffer_size_threshold = 8192  # Adjust this threshold as needed
+
+                for chunk in response.iter_content(chunk_size=None):  # Allow dynamic chunk size
                     if chunk:
-                        self.play_audio_chunk(chunk)
+                        audio_buffer.append(np.frombuffer(chunk, dtype=np.int16))
+
+                        # Concatenate and play when buffer size exceeds the threshold
+                        if sum(len(data) for data in audio_buffer) > buffer_size_threshold:
+                            combined_audio = np.concatenate(audio_buffer)
+                            self.play_audio_chunk(combined_audio)
+                            audio_buffer = []  # Clear the buffer after playing
+
+                # Play any remaining audio in the buffer
+                if audio_buffer:
+                    combined_audio = np.concatenate(audio_buffer)
+                    self.play_audio_chunk(combined_audio)
 
             except requests.exceptions.RequestException as e:
                 self.append_chat("System", f"Failed to connect to audio stream: {e}")
@@ -117,8 +135,22 @@ class ChatApp(AgentInterface):
         thread.start()
 
     def play_audio_chunk(self, chunk):
-        audio = AudioSegment.from_file(BytesIO(chunk), format="wav")
-        play(audio)
+        # Assuming the server sends raw PCM data, you'll need to know the format
+        # Example for 16-bit PCM, stereo, 44.1 kHz:
+        dtype = np.int16
+        channels = 1
+        sample_rate = 22050
+
+        # Convert bytes to NumPy array
+        audio_data = np.frombuffer(chunk, dtype=dtype)
+
+        # Reshape for stereo channels if necessary
+        audio_data = audio_data.reshape(-1, channels)
+
+
+        # Play audio using sounddevice
+        sd.play(audio_data, samplerate=sample_rate, blocking=8192)
+        sd.wait()  # Wait until the audio is played before continuing
 
     def update_chat_display(self):
         def update():

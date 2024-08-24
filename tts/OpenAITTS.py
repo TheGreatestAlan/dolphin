@@ -19,14 +19,19 @@ class OpenAITTS(TTSInterface):
             raise ValueError("OpenAI API key not found in environment variables.")
         self.client = OpenAI(api_key=api_key)
 
-        # Initialize text and audio buffers
+        # Initialize text, sentence, and audio buffers
         self.text_buffer = queue.Queue()
+        self.sentence_buffer = queue.Queue()
         self.audio_buffer = queue.Queue()
 
-        # Start the text processing in a separate thread
-        self.process_thread = threading.Thread(target=self.process_text_queue)
-        self.process_thread.daemon = True  # Daemonize thread so it exits when the main program exits
-        self.process_thread.start()
+        # Start the text processing in separate threads
+        self.process_text_thread = threading.Thread(target=self.process_text_queue)
+        self.process_text_thread.daemon = True  # Daemonize thread so it exits when the main program exits
+        self.process_text_thread.start()
+
+        self.process_sentence_thread = threading.Thread(target=self.process_sentence_queue)
+        self.process_sentence_thread.daemon = True  # Daemonize thread so it exits when the main program exits
+        self.process_sentence_thread.start()
 
     def get_audio_buffer(self):
         """Return the audio buffer so external code can access the audio data."""
@@ -62,17 +67,38 @@ class OpenAITTS(TTSInterface):
         return samples, sample_rate
 
     def process_text_queue(self):
-        """Continuously process the text buffer, convert text to audio, and add to the audio buffer."""
+        """Continuously process the text buffer, form sentences, and add to the sentence buffer."""
+        sentence = []
         while True:
             try:
-                # Get text from the queue, blocking until something is available
+                # Get text fragment from the text buffer
                 text = self.text_buffer.get(timeout=5)
-
                 if text is None:  # Sentinel value to stop processing
                     break
 
-                # Convert text to audio
-                samples, sample_rate = self.play_audio_stream(text)
+                # Accumulate fragments into a sentence
+                sentence.append(text)
+
+                # If a sentence-ending punctuation is detected, send the sentence to the sentence buffer
+                if any(punct in text for punct in ".!?"):
+                    full_sentence = ''.join(sentence)
+                    self.sentence_buffer.put(full_sentence)
+                    sentence = []  # Reset for the next sentence
+
+            except queue.Empty:
+                continue  # Continue checking the queue if it's empty
+
+    def process_sentence_queue(self):
+        """Continuously process the sentence buffer, convert to audio, and add to the audio buffer."""
+        while True:
+            try:
+                # Get a full sentence from the sentence buffer
+                sentence = self.sentence_buffer.get(timeout=5)
+                if sentence is None:  # Sentinel value to stop processing
+                    break
+
+                # Convert sentence to audio
+                samples, sample_rate = self.play_audio_stream(sentence)
 
                 # Put the audio data onto the audio buffer
                 self.audio_buffer.put((samples, sample_rate))
@@ -81,9 +107,11 @@ class OpenAITTS(TTSInterface):
                 continue  # Continue checking the queue if it's empty
 
     def stop(self):
-        """Stop the processing thread by sending a sentinel value."""
+        """Stop the processing threads by sending sentinel values."""
         self.text_buffer.put(None)
-        self.process_thread.join()  # Ensure the thread has stopped before continuing
+        self.sentence_buffer.put(None)
+        self.process_text_thread.join()
+        self.process_sentence_thread.join()
 
 
 def audio_player(audio_buffer):
@@ -109,7 +137,8 @@ if __name__ == "__main__":
     audio_thread.start()
 
     # Add some text to the queue
-    tts_player.add_text_to_queue("Hello, how are you today?")
+    tts_player.add_text_to_queue("Hello, how are you")
+    tts_player.add_text_to_queue("today?")
     tts_player.add_text_to_queue("This is a streaming text-to-speech test.")
     tts_player.add_text_to_queue("Goodbye!")
 
