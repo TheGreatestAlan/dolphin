@@ -1,3 +1,4 @@
+import base64
 import json
 import tkinter as tk
 from tkinter import scrolledtext
@@ -17,8 +18,21 @@ class ChatApp(AgentInterface):
         self.root.title("LLM Chat App")
 
         # Read AGENT_URL from environment variable
-        #self.agent_url = os.getenv('AGENT_URL', 'http://192.168.1.7:5000')
+        self.agent_api_base_path = os.getenv("AGENT_API_BASE_PATH", "")
         self.agent_url = os.getenv('AGENT_URL', 'http://127.0.0.1:5000')
+
+        # Read auth details from environment variables
+        self.username = os.getenv('AGENT_API_USERNAME')
+        self.password = os.getenv('AGENT_API_PASSWORD')
+
+        # Prepare the Authorization header if credentials are provided
+        self.auth_headers = {}
+        if self.username and self.password:
+            auth_string = f"{self.username}:{self.password}"
+            auth_base64 = base64.b64encode(auth_string.encode('utf-8')).decode('utf-8')
+            self.auth_headers = {
+                "Authorization": f"Basic {auth_base64}"
+            }
 
         self.chat_window = scrolledtext.ScrolledText(root, wrap=tk.WORD, state='disabled')
         self.chat_window.grid(row=0, column=0, columnspan=3, padx=10, pady=10)
@@ -44,7 +58,7 @@ class ChatApp(AgentInterface):
         thread.start()
 
     def _start_session(self):
-        response = requests.post(f"{self.agent_url}/start_session")
+        response = requests.post(f"{self.agent_url}{self.agent_api_base_path}/start_session", headers=self.auth_headers)
         if response.ok:
             self.session_id = response.json()['session_id']
             self.append_chat("System", "Session started.")
@@ -68,7 +82,7 @@ class ChatApp(AgentInterface):
             'user_message': prompt
         }
         try:
-            response = requests.post(f"{self.agent_url}/message_agent", json=data)
+            response = requests.post(f"{self.agent_url}{self.agent_api_base_path}/message_agent", json=data, headers=self.auth_headers)
             if not response.ok:
                 self.append_chat("System", f"Failed to send message: {response.text}")
         except requests.exceptions.RequestException as e:
@@ -77,7 +91,7 @@ class ChatApp(AgentInterface):
     def listen_to_stream(self):
         def stream():
             try:
-                response = requests.get(f"{self.agent_url}/stream/{self.session_id}", stream=True)
+                response = requests.get(f"{self.agent_url}{self.agent_api_base_path}/stream/{self.session_id}", stream=True, headers=self.auth_headers)
 
                 for line in response.iter_lines():
                     if line:
@@ -105,7 +119,7 @@ class ChatApp(AgentInterface):
     def listen_to_audio_stream(self):
         def stream_audio():
             try:
-                response = requests.get(f"{self.agent_url}/streamaudio/{self.session_id}", stream=True)
+                response = requests.get(f"{self.agent_url}{self.agent_api_base_path}/streamaudio/{self.session_id}", stream=True, headers=self.auth_headers)
 
                 audio_buffer = []  # Buffer to accumulate audio data
                 buffer_size_threshold = 8192  # Adjust this threshold as needed
@@ -188,7 +202,7 @@ class ChatApp(AgentInterface):
     def end_session(self):
         if self.session_id:
             try:
-                requests.delete(f"{self.agent_url}/end_session", json={'session_id': self.session_id})
+                requests.delete(f"{self.agent_url}{self.agent_api_base_path}/end_session", json={'session_id': self.session_id}, headers=self.auth_headers)
             except requests.exceptions.RequestException as e:
                 self.append_chat("System", f"Failed to end session: {e}")
         self.root.destroy()
