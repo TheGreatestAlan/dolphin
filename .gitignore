@@ -20,3 +20,5 @@ submodules/
 venv/
 
 *_old.py
+
+.env
