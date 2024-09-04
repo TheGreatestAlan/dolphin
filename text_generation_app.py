@@ -2,9 +2,8 @@ import os
 import time
 from flask import Flask, request, jsonify, Response
 
-from llms.ChatGPT4 import ChatGPT4
-from llms.Ollama3 import Ollama3LLM
-from llms.llamacpp import LlamaCpp
+from agent_server.llms.ChatGPT4 import ChatGPT4
+from llm.llamacpp import LlamaCpp
 
 # Create Flask app for text generation server
 app = Flask(__name__)

@@ -1,12 +1,10 @@
-import os
 import queue
-import threading
 import pyaudio
 import wave
 from gtts import gTTS
 from pydub import AudioSegment
 
-from tts.SpeechInterfaces import TTSInterface
+from agent_server.tts.SpeechInterfaces import TTSInterface
 
 
 class GTTSHandler(TTSInterface):

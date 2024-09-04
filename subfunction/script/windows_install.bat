@@ -1,8 +1,5 @@
 @echo off
 REM Download and install the Whisper executable and model for the project on Windows
-REM HEMMINGWAY BRIDGE:  Need to make sure the right libraries download, so that's the
-REM ffmpeg binaries, that need to make it onto the PATH, and then check if you actually need
-REM to download the whisper library, or if the python cpu module does that
 
 REM Define directories
 set "WHISPER_DIR=%cd%\submodules\whisper.cpp"

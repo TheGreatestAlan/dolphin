@@ -1,6 +1,6 @@
 import requests
 
-from llms.LLMInterface import LLMInterface
+from agent_server.llms.LLMInterface import LLMInterface
 
 
 class LLMClient(LLMInterface):

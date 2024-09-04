@@ -1,6 +1,6 @@
 import queue
 
-from tts.OpenAITTS import OpenAITTS
+from agent_server.tts.OpenAITTS import OpenAITTS
 
 
 class StreamManager:

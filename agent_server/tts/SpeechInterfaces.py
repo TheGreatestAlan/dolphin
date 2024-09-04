@@ -1,6 +1,3 @@
-
-
-import queue
 from abc import ABC, abstractmethod
 
 class TTSInterface(ABC):

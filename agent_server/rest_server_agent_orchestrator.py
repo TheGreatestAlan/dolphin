@@ -1,16 +1,16 @@
 import os
 import json
 from threading import Thread
-from agent.llm_assistant import LLMAssistant
-from agent.assistant import Assistant
+from llm_assistant import LLMAssistant
+from assistant import Assistant
 from integrations.ChatHandler import ChatHandler
 from flask import Flask, request, jsonify, Response
 
-from integrations.StreamManager import StreamManager
+from agent_server.integrations.StreamManager import StreamManager
 
 app = Flask(__name__)
 
-sessions_file_path = 'sessions.json'
+sessions_file_path = '../orchestraion/sessions.json'
 stream_manager = StreamManager()
 chat_handler = ChatHandler(stream_manager, sessions_file_path)
 assistant: Assistant = LLMAssistant(chat_handler)
@@ -19,14 +19,26 @@ def stream_text_in_thread(session_id):
     text_queue = stream_manager.listen_to_text_stream(session_id)
 
     def generate():
+        count = 0
+        messagecount=0
         while True:
             text_chunk = text_queue.get()  # Block until new text is available
+            #text_chunk = "testing" + str(messagecount) # Block until new text is available
+            #if count%4 == 0:
+            #     text_chunk = "[DONE]"
+            #     messagecount = messagecount + 1
+            #     count = 0
+            print("yielding:" + text_chunk)
             yield f"data: {json.dumps({'message': text_chunk})}\n\n"
+#            count=count+1
+#            time.sleep(1)
+        print("stream killed")
 
     return Response(generate(), mimetype='text/event-stream')
 
 @app.route('/stream/<session_id>')
 def stream_text(session_id):
+    print("GOT STREAM CALL")
     """Start a thread for streaming text and return the response."""
     stream_thread = Thread(target=stream_text_in_thread, args=(session_id,))
     stream_thread.start()
@@ -93,4 +105,4 @@ def message_agent():
 
 if __name__ == '__main__':
     os.environ['FLASK_SKIP_DOTENV'] = 'true'
-    app.run(debug=True, host='127.0.0.1', port=5000, use_reloader=False)
+    app.run(debug=True, host=os.environ['REST_ADDRESS'], port=os.environ['REST_PORT'], use_reloader=False)

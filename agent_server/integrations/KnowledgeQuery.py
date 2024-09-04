@@ -1,5 +1,5 @@
-from FunctionResponse import FunctionResponse, Status
-from llms.LLMInterface import LLMInterface
+from agent_server.FunctionResponse import FunctionResponse, Status
+from agent_server.llms.LLMInterface import LLMInterface
 
 
 class KnowledgeQuery:

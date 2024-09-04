@@ -2,8 +2,8 @@ import json
 
 import requests
 
-from FunctionResponse import FunctionResponse, Status
-from integrations.Inventory import Inventory
+from agent_server.FunctionResponse import FunctionResponse, Status
+from agent_server.integrations.Inventory import Inventory
 
 
 class InventoryClient(Inventory):

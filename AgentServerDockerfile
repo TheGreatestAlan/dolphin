@@ -1,0 +1,17 @@
+# Use a base image with Python installed
+FROM python:3.9
+
+# Set the working directory in the container
+WORKDIR /app/agent_server
+
+# Copy only the necessary files to the container
+COPY agent_server /app/agent_server
+
+# Install any required Python packages
+RUN pip install --no-cache-dir -r requirements.txt
+
+ENV PYTHONPATH="/app:${PYTHONPATH}"
+
+# Run the main script
+CMD ["python", "/app/agent_server/rest_server_agent_orchestrator.py"]
+

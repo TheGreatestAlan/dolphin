@@ -10,9 +10,6 @@ import sounddevice as sd
 
 
 from agent.AgentInterface import AgentInterface
-from pydub import AudioSegment
-from pydub.playback import play
-from io import BytesIO
 
 class ChatApp(AgentInterface):
     def __init__(self, root):
@@ -20,6 +17,7 @@ class ChatApp(AgentInterface):
         self.root.title("LLM Chat App")
 
         # Read AGENT_URL from environment variable
+        #self.agent_url = os.getenv('AGENT_URL', 'http://192.168.1.7:5000')
         self.agent_url = os.getenv('AGENT_URL', 'http://127.0.0.1:5000')
 
         self.chat_window = scrolledtext.ScrolledText(root, wrap=tk.WORD, state='disabled')
@@ -135,21 +133,20 @@ class ChatApp(AgentInterface):
         thread.start()
 
     def play_audio_chunk(self, chunk):
-        # Assuming the server sends raw PCM data, you'll need to know the format
-        # Example for 16-bit PCM, stereo, 44.1 kHz:
         dtype = np.int16
         channels = 1
         sample_rate = 22050
 
         # Convert bytes to NumPy array
         audio_data = np.frombuffer(chunk, dtype=dtype)
+        print(len(chunk))
 
         # Reshape for stereo channels if necessary
         audio_data = audio_data.reshape(-1, channels)
 
 
         # Play audio using sounddevice
-        sd.play(audio_data, samplerate=sample_rate, blocking=8192)
+        sd.play(audio_data, samplerate=sample_rate, blocking=True)
         sd.wait()  # Wait until the audio is played before continuing
 
     def update_chat_display(self):

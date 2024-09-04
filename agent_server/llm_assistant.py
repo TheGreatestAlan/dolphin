@@ -4,15 +4,15 @@ import uuid
 from flask import jsonify
 import os
 
-from SmartFindingInventoryClient import SmartFindingInventoryClient
-from agent.assistant import Assistant
-from functiongenerator.InventoryFunctionGenerator import InventoryFunctionGenerator
-from integrations.InventoryRestClient import InventoryClient
-from integrations.KnowledgeQuery import KnowledgeQuery
+from agent_server.integrations.SmartFindingInventoryClient import SmartFindingInventoryClient
+from agent_server.assistant import Assistant
+from agent_server.InventoryFunctionGenerator import InventoryFunctionGenerator
+from agent_server.integrations.InventoryRestClient import InventoryClient
+from agent_server.integrations.KnowledgeQuery import KnowledgeQuery
 from llms.RestLLM import RestLLM
-from llms.ChatGPT4 import ChatGPT4  # Import the ChatGPT4 class
+from llms.ChatGPT4 import ChatGPT4
 from FunctionMapper import FunctionMapper
-from integrations.ChatHandler import ChatHandler
+from agent_server.integrations.ChatHandler import ChatHandler
 
 
 class LLMAssistant(Assistant):
@@ -28,7 +28,7 @@ class LLMAssistant(Assistant):
         else:
             raise ValueError(f"Unsupported LLM_TYPE: {llm_type}")
 
-        sessions_file_path = 'sessions.json'
+        sessions_file_path = '../agent/sessions.json'
         self.MAX_NESTING_LEVEL = 3
         self.chat_handler = chat_handler
 
@@ -48,7 +48,7 @@ class LLMAssistant(Assistant):
         self.chat_handler.load_sessions_from_file()
         self.read_function_list()
 
-    def read_system_message(self, file_path='../prompt/SystemPrompt.txt'):
+    def read_system_message(self, file_path='./prompt/SystemPrompt.txt'):
         global SYSTEM_MESSAGE
         script_dir = os.path.dirname(os.path.abspath(__file__))
         absolute_path = os.path.normpath(os.path.join(script_dir, file_path))
@@ -60,7 +60,7 @@ class LLMAssistant(Assistant):
         except Exception as e:
             print(f"Error reading system message: {e}")
 
-    def read_function_list(self, file_path='../prompt/functionList.txt'):
+    def read_function_list(self, file_path='./prompt/functionList.txt'):
         global FUNCTION_LIST
         script_dir = os.path.dirname(os.path.abspath(__file__))
         absolute_path = os.path.normpath(os.path.join(script_dir, file_path))

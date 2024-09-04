@@ -1,7 +1,7 @@
 import os
 import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
-from llms.LLMInterface import LLMInterface
+from agent_server.llms.LLMInterface import LLMInterface
 
 class Ollama3LLM(LLMInterface):
     def __init__(self):

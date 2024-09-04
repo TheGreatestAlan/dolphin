@@ -3,7 +3,7 @@ import time
 import requests
 import json
 
-from llms.LLMInterface import LLMInterface
+from agent_server.llms.LLMInterface import LLMInterface
 
 
 class ChatGPT4(LLMInterface):

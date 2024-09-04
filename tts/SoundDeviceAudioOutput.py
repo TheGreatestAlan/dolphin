@@ -1,8 +1,7 @@
 import sounddevice as sd
-import numpy as np
 import soundfile as sf
 
-from tts.SpeechInterfaces import AudioOutputInterface
+from agent_server.tts.SpeechInterfaces import AudioOutputInterface
 
 
 class SoundDeviceAudioOutput(AudioOutputInterface):

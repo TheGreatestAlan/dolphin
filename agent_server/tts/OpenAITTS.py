@@ -7,8 +7,7 @@ import threading
 import numpy as np
 from openai import OpenAI
 from pydub import AudioSegment
-from tts.SpeechInterfaces import TTSInterface
-import sounddevice as sd
+from agent_server.tts.SpeechInterfaces import TTSInterface
 
 
 class OpenAITTS(TTSInterface):
@@ -63,6 +62,7 @@ class OpenAITTS(TTSInterface):
         # Convert audio_segment to numpy array for playback or further processing
         samples = np.array(audio_segment.get_array_of_samples())
         sample_rate = audio_segment.frame_rate
+        print(sample_rate)
 
         return samples, sample_rate
 
@@ -112,40 +112,3 @@ class OpenAITTS(TTSInterface):
         self.sentence_buffer.put(None)
         self.process_text_thread.join()
         self.process_sentence_thread.join()
-
-
-def audio_player(audio_buffer):
-    """Continuously play audio from the buffer."""
-    while True:
-        audio_chunk = audio_buffer.get()
-        if audio_chunk is None:  # Sentinel value to stop the thread
-            break
-        audio_samples, sample_rate = audio_chunk
-        sd.play(audio_samples, samplerate=sample_rate)
-        sd.wait()
-
-
-if __name__ == "__main__":
-    tts_player = OpenAITTS()
-
-    # Get the audio buffer and play the audio
-    audio_buffer = tts_player.get_audio_buffer()
-
-    # Start the audio player in a separate thread
-    audio_thread = threading.Thread(target=audio_player, args=(audio_buffer,))
-    audio_thread.daemon = True  # Daemonize thread so it exits when the main program exits
-    audio_thread.start()
-
-    # Add some text to the queue
-    tts_player.add_text_to_queue("Hello, how are you")
-    tts_player.add_text_to_queue("today?")
-    tts_player.add_text_to_queue("This is a streaming text-to-speech test.")
-    tts_player.add_text_to_queue("Goodbye!")
-
-    # Simulate the main thread doing other work
-    time.sleep(12)  # Adjust as needed
-
-    # Stop the TTS player and audio thread
-    tts_player.stop()
-    audio_buffer.put(None)  # Send sentinel to stop the audio player
-    audio_thread.join()  # Ensure the audio thread has stopped before continuing

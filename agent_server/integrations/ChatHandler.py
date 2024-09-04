@@ -4,8 +4,8 @@ import os
 from langchain.memory import ConversationBufferMemory
 from langchain_core.messages import HumanMessage, AIMessage
 
-from FunctionResponse import FunctionResponse, Status
-from integrations.StreamManager import StreamManager
+from agent_server.FunctionResponse import FunctionResponse, Status
+from agent_server.integrations.StreamManager import StreamManager
 
 
 class ChatHandler:

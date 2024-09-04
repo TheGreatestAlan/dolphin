@@ -2,8 +2,7 @@ import unittest
 import time
 import os
 
-from llms.Ollama3 import Ollama3LLM
-from llms.llamacpp import LlamaCpp
+from llm.llamacpp import LlamaCpp
 
 
 class TestLlamaCppStreaming(unittest.TestCase):

@@ -1,8 +1,8 @@
 import json
 
-from FunctionResponse import FunctionResponse, Status
-from integrations.Inventory import Inventory
-from llms.LLMInterface import LLMInterface
+from agent_server.FunctionResponse import FunctionResponse, Status
+from agent_server.integrations.Inventory import Inventory
+from agent_server.llms.LLMInterface import LLMInterface
 
 
 class SmartFindingInventoryClient(Inventory):

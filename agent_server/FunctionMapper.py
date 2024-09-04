@@ -2,11 +2,11 @@ import json
 import os
 import uuid
 
-from FunctionResponse import FunctionResponse, Status
-from functiongenerator.InventoryFunctionGenerator import InventoryFunctionGenerator
-from integrations.ChatHandler import ChatHandler
-from integrations.Inventory import Inventory
-from integrations.KnowledgeQuery import KnowledgeQuery
+from agent_server.FunctionResponse import FunctionResponse, Status
+from agent_server.InventoryFunctionGenerator import InventoryFunctionGenerator
+from agent_server.integrations.ChatHandler import ChatHandler
+from agent_server.integrations.Inventory import Inventory
+from agent_server.integrations.KnowledgeQuery import KnowledgeQuery
 
 
 class FunctionMapper:
@@ -105,7 +105,7 @@ class FunctionMapper:
     def list_functions(self) -> FunctionResponse:
         try:
             script_dir = os.path.dirname(os.path.abspath(__file__))
-            file_path = os.path.join(script_dir, './prompt/functionList.txt')
+            file_path = os.path.join(script_dir, 'prompt/functionList.txt')
             with open(file_path, 'r') as file:
                 functions = json.load(file)
             return FunctionResponse(Status.SUCCESS, functions)
