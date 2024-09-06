@@ -24,6 +24,7 @@ class ChatApp(AgentInterface):
         # Read auth details from environment variables
         self.username = os.getenv('AGENT_API_USERNAME')
         self.password = os.getenv('AGENT_API_PASSWORD')
+        self.skipSSL = os.getenv("SKIP_SSL", False)
 
         # Prepare the Authorization header if credentials are provided
         self.auth_headers = {}
@@ -58,7 +59,7 @@ class ChatApp(AgentInterface):
         thread.start()
 
     def _start_session(self):
-        response = requests.post(f"{self.agent_url}{self.agent_api_base_path}/start_session", headers=self.auth_headers)
+        response = requests.post(f"{self.agent_url}{self.agent_api_base_path}/start_session", headers=self.auth_headers, verify=self.skipSSL)
         if response.ok:
             self.session_id = response.json()['session_id']
             self.append_chat("System", "Session started.")
@@ -82,7 +83,7 @@ class ChatApp(AgentInterface):
             'user_message': prompt
         }
         try:
-            response = requests.post(f"{self.agent_url}{self.agent_api_base_path}/message_agent", json=data, headers=self.auth_headers)
+            response = requests.post(f"{self.agent_url}{self.agent_api_base_path}/message_agent", json=data, headers=self.auth_headers, verify=self.skipSSL)
             if not response.ok:
                 self.append_chat("System", f"Failed to send message: {response.text}")
         except requests.exceptions.RequestException as e:
@@ -91,7 +92,7 @@ class ChatApp(AgentInterface):
     def listen_to_stream(self):
         def stream():
             try:
-                response = requests.get(f"{self.agent_url}{self.agent_api_base_path}/stream/{self.session_id}", stream=True, headers=self.auth_headers)
+                response = requests.get(f"{self.agent_url}{self.agent_api_base_path}/stream/{self.session_id}", stream=True, headers=self.auth_headers, verify=self.skipSSL)
 
                 for line in response.iter_lines():
                     if line:
@@ -119,7 +120,7 @@ class ChatApp(AgentInterface):
     def listen_to_audio_stream(self):
         def stream_audio():
             try:
-                response = requests.get(f"{self.agent_url}{self.agent_api_base_path}/streamaudio/{self.session_id}", stream=True, headers=self.auth_headers)
+                response = requests.get(f"{self.agent_url}{self.agent_api_base_path}/streamaudio/{self.session_id}", stream=True, headers=self.auth_headers, verify=self.skipSSL)
 
                 audio_buffer = []  # Buffer to accumulate audio data
                 buffer_size_threshold = 8192  # Adjust this threshold as needed
@@ -202,7 +203,7 @@ class ChatApp(AgentInterface):
     def end_session(self):
         if self.session_id:
             try:
-                requests.delete(f"{self.agent_url}{self.agent_api_base_path}/end_session", json={'session_id': self.session_id}, headers=self.auth_headers)
+                requests.delete(f"{self.agent_url}{self.agent_api_base_path}/end_session", json={'session_id': self.session_id}, headers=self.auth_headers, verify=self.skipSSL)
             except requests.exceptions.RequestException as e:
                 self.append_chat("System", f"Failed to end session: {e}")
         self.root.destroy()
