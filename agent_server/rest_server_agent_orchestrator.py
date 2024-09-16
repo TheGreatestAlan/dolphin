@@ -1,5 +1,6 @@
 import os
 import json
+from datetime import time
 from threading import Thread
 from llm_assistant import LLMAssistant
 from assistant import Assistant
@@ -8,50 +9,54 @@ from flask import Flask, request, jsonify, Response
 
 from agent_server.integrations.StreamManager import StreamManager
 
+# HEMMINGWAY BRIDGE:
+# Trying to figure out when a stream dies, how to restart it
+# K, you got the docker pull working correctly with additional scripting
+# you need to build a shell version of this and put it on the server to use,
+# then run it every time it restarts.
+
 app = Flask(__name__)
 
 sessions_file_path = '../orchestraion/sessions.json'
 stream_manager = StreamManager()
 chat_handler = ChatHandler(stream_manager, sessions_file_path)
 assistant: Assistant = LLMAssistant(chat_handler)
+active_threads = {}
+
+
+
 
 def stream_text_in_thread(session_id):
     text_queue = stream_manager.listen_to_text_stream(session_id)
 
     def generate():
-        count = 0
-        messagecount=0
         while True:
             text_chunk = text_queue.get()  # Block until new text is available
-            #text_chunk = "testing" + str(messagecount) # Block until new text is available
-            #if count%4 == 0:
-            #     text_chunk = "[DONE]"
-            #     messagecount = messagecount + 1
-            #     count = 0
-            print("yielding:" + text_chunk)
             yield f"data: {json.dumps({'message': text_chunk})}\n\n"
-#            count=count+1
-#            time.sleep(1)
-        print("stream killed")
 
     return Response(generate(), mimetype='text/event-stream')
 
 @app.route('/stream/<session_id>')
 def stream_text(session_id):
-    print("GOT STREAM CALL")
     """Start a thread for streaming text and return the response."""
     stream_thread = Thread(target=stream_text_in_thread, args=(session_id,))
     stream_thread.start()
+
+    # Track the thread in the active registry
+    active_threads[session_id] = stream_thread
+
+    # Start monitoring the thread's health
+    monitor_thread = Thread(target=monitor_thread_health, args=(session_id, stream_thread))
+    monitor_thread.start()
+
     return stream_text_in_thread(session_id)
 
 @app.route('/streamaudio/<session_id>')
 def stream_audio(session_id):
-    print("streaming audio")
     audio_buffer = stream_manager.listen_to_audio_stream(session_id)
 
     def generate_audio():
         while True:
-            print("streaming buffer")
             audio_chunk = audio_buffer.get()  # Block until a new audio chunk is available
             if audio_chunk is None:  # Sentinel value to stop the stream
                 break
@@ -59,7 +64,6 @@ def stream_audio(session_id):
             # Convert numpy array to bytes
             audio_bytes = samples.tobytes()
             chunk_size = len(audio_bytes)  # Measure the size of the chunk in bytes
-            print(f"Generated chunk size: {chunk_size} bytes")  # Log the chunk size
             yield audio_bytes
 
     def stream_audio_thread():
@@ -88,6 +92,19 @@ def end_session():
 
     chat_handler.end_session(session_id)
     return '', 200
+
+def monitor_thread_health(session_id, thread):
+    while thread.is_alive():
+        time.sleep(5)  # Check every 5 seconds
+    clean_up_resources(session_id)
+
+def clean_up_resources(session_id):
+    if session_id in active_threads:
+        print("cleanint up resource:" + session_id)
+        del active_threads[session_id]
+    # Any other resource cleanup related to the stream
+    stream_manager.end_text_stream(session_id)  # Custom method to stop streams
+
 
 @app.route('/message_agent', methods=['POST'])
 def message_agent():

@@ -1,4 +1,4 @@
 @echo off
 cd ../..
-docker build -f AgentServerDockerfile -t agent-server .
+docker build -f AgentServerDockerfile -t agent-server:latest .
 
