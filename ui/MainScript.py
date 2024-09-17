@@ -8,7 +8,7 @@ from tts.PyAudioOutput import PyAudioOutput
 from tts.Speech import Speech
 from audio_recorder import AudioRecorder
 from ui.AudioManager import AudioManager
-from agent.AgentRestClient import AgentRestClient
+from chatapp.AgentRestClient import AgentRestClient
 from ui.VoiceAssistantGUI import VoiceAssistantGUI
 from ui.VoiceAssistant import VoiceAssistant
 

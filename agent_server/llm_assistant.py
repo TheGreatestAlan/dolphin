@@ -43,7 +43,7 @@ class LLMAssistant(Assistant):
             logger.error(f"Unsupported LLM_TYPE: {llm_type}")
             raise ValueError(f"Unsupported LLM_TYPE: {llm_type}")
 
-        sessions_file_path = '../agent/sessions.json'
+        sessions_file_path = '../chatapp/sessions.json'
         self.MAX_NESTING_LEVEL = 3
         self.chat_handler = chat_handler
 

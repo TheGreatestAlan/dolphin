@@ -10,9 +10,7 @@ import threading
 import sounddevice as sd
 
 
-from agent.AgentInterface import AgentInterface
-
-class ChatApp(AgentInterface):
+class ChatApp():
     def __init__(self, root):
         self.root = root
         self.root.title("LLM Chat App")
@@ -173,7 +171,7 @@ class ChatApp(AgentInterface):
             for entry in self.message_history:
                 self.chat_window.insert(tk.END, f"{entry}\n")
 
-            # Display current agent message
+            # Display current chatapp message
             if self.current_message:
                 self.chat_window.insert(tk.END, f"Agent: {self.current_message.strip()}\n")
 

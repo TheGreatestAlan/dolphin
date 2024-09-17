@@ -30,7 +30,7 @@ class AgentRestClient:
         try:
             response = requests.post(f"{self.agent_url}/message_agent", json=payload)
             response.raise_for_status()
-            return "Message sent to agent."
+            return "Message sent to chatapp."
         except requests.exceptions.RequestException as e:
             raise Exception(f"Failed to send message: {e}")
 
