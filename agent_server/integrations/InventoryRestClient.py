@@ -61,9 +61,6 @@ class InventoryClient(Inventory):
         except requests.exceptions.RequestException as err:  # Catch all request errors
             error_msg = f"Request error: {err}"
             return FunctionResponse(Status.FAILURE, error_msg)
-        except Exception as err:  # Catch other unexpected errors
-            error_msg = f"An unexpected error occurred: {err}"
-            return FunctionResponse(Status.FAILURE, error_msg)
 
 
 # Example usage:

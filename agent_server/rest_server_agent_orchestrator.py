@@ -14,6 +14,7 @@ from agent_server.integrations.StreamManager import StreamManager
 # K, you got the docker pull working correctly with additional scripting
 # you need to build a shell version of this and put it on the server to use,
 # then run it every time it restarts.
+# still need to cleanup resources correctly
 
 app = Flask(__name__)
 
