@@ -11,28 +11,15 @@ from flask import Flask, request, jsonify, Response
 
 from agent_server.integrations.StreamManager import StreamManager
 
-# HEMMINGWAY BRIDGE:
-# K we're handling the separation of user and sessionid.  You have, untested in here
-# the implementation of a user logging in with a userId and then using the returned
-# session id for the rest of the calls.  Make sure that when a user sends a message
-# that the username is looked up here by sessionid and then sent to the assistant
-
-# the assistant needs to then have both the username and the session, and send both
-# I'm thinking you pull the stream manager into the assistant and out of the chat
-# handler.  Then it streams directly to the stream manager, and once the message is
-# completed it's saved by the chat handler.
-
-# Chat handler should only know about usernames now, and no longer sessions
-
-# also make sure that streammanager is handled correctly
-
 app = Flask(__name__)
 
 sessions_file_path = '../orchestraion/sessions.json'
 stream_manager = StreamManager()
-chat_handler = ChatHandler(stream_manager, sessions_file_path)
-assistant: Assistant = LLMAssistant(chat_handler)
+chat_handler = ChatHandler(sessions_file_path)
+assistant: Assistant = LLMAssistant(chat_handler, stream_manager)
 active_threads = {}
+# Initialize session-to-username mapping
+user_sessions = {}
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -89,8 +76,6 @@ def stream_audio(session_id):
     return stream_audio_thread()
 
 
-# Initialize session-to-username mapping
-user_sessions = {}
 
 @app.route('/start_session', methods=['POST'])
 def start_session():
@@ -104,15 +89,10 @@ def start_session():
     session_id = os.urandom(16).hex()
 
     # Start a new session in the ChatHandler using the username
-    chat_handler.start_session(session_id, username)
+    chat_handler.get_or_create_user(username)
 
     # Map the session_id to the username
     user_sessions[session_id] = username
-
-    # Check if there's an active thread for this session and clean up if needed
-    if session_id in active_threads:
-        logger.info(f"Cleaning up existing thread for session {session_id}")
-        clean_up_resources(session_id)
 
     # Return session_id and heartbeat interval
     return jsonify({"session_id": session_id, "heartbeat_interval": HEARTBEAT_INTERVAL})
@@ -126,10 +106,6 @@ def stream_text(session_id):
 
     # Track the thread in the active registry
     active_threads[session_id] = stream_thread
-
-    # Start monitoring the thread's health
-    monitor_thread = Thread(target=monitor_thread_health, args=(session_id, stream_thread))
-    monitor_thread.start()
 
     return stream_text_in_thread(session_id)
 
@@ -154,11 +130,6 @@ def end_session():
     return '', 200
 
 
-def monitor_thread_health(session_id, thread):
-    while thread.is_alive():
-        time.sleep(5)  # Check every 5 seconds
-    clean_up_resources(session_id)
-
 
 def clean_up_resources(session_id):
     if session_id in active_threads:
@@ -180,8 +151,7 @@ def message_agent():
         return jsonify({"error": "Invalid or missing session_id"}), 400
 
     # Forward the message to the assistant via session_id
-    assistant.message_assistant(session_id, user_message)
-    chat_handler.store_human_context(session_id, user_message)  # Add to queue
+    assistant.message_assistant(session_id, user_sessions.get(session_id), user_message)
 
     return jsonify({"status": "Message received, processing started"}), 202
 

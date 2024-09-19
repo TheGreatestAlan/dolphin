@@ -9,6 +9,7 @@ from agent_server.assistant import Assistant
 from agent_server.InventoryFunctionGenerator import InventoryFunctionGenerator
 from agent_server.integrations.InventoryRestClient import InventoryClient
 from agent_server.integrations.KnowledgeQuery import KnowledgeQuery
+from agent_server.integrations.StreamManager import StreamManager
 from llms.RestLLM import RestLLM
 from llms.ChatGPT4 import ChatGPT4
 from FunctionMapper import FunctionMapper
@@ -20,18 +21,17 @@ logger = logging.getLogger(__name__)
 
 
 # HEMMINGWAY BRIDGE
-# it looks like the logic is not advancing the current step correctly.  Also, it looks
-# like it's not able to correctly write steps.
-# Definitely need to workshop manually getting the command, what's responded, and what
-# you're feeding back in to understand how to adjust hte logic of what's happening
-# first step is probably to get an easy way to copy out the commands and responses
-# so that you can look at them directly
+# looks like the process isn't following up correctly on reading the response from the llm
+# and prompting it back.  Follow the logic through by asking it for the time, put in break
+# points and follow the response.
 
 class LLMAssistant(Assistant):
-    def __init__(self, chat_handler: ChatHandler):
+    def __init__(self, chat_handler: ChatHandler, stream_manager: StreamManager):
         logger.info("Initializing LLMAssistant...")
         llm_type = os.getenv('LLM_TYPE', '')
         llm_url = os.getenv('LLM_URL', '')
+        self.stream_manager = stream_manager
+        self.temp_buffers = {} #Dictionary to hold streaming text
 
         if llm_type == 'RestLLM':
             logger.info("Using RestLLM")
@@ -87,7 +87,7 @@ class LLMAssistant(Assistant):
         except Exception as e:
             logger.exception(f"Error reading function list: {e}")
 
-    def stream_immediate_response(self, response_generator, session_id):
+    def stream_immediate_response(self, response_generator, session_id, username):
         logger.info(f"Streaming immediate response for session {session_id}.")
         in_content = False
         finding_buffer = ""
@@ -126,18 +126,45 @@ class LLMAssistant(Assistant):
 
                 if content_end != -1:
                     content_to_stream = finding_buffer[:content_end]
-                    self.chat_handler.receive_stream_data(session_id, content_to_stream, message_id)
+                    self.parse_llm_stream(session_id, username, content_to_stream, message_id)
                     finding_buffer = finding_buffer[content_end + 1:]
                     in_content = False
-                    self.chat_handler.receive_stream_data(session_id, "[DONE]", message_id)
+                    self.parse_llm_stream(session_id, username, "[DONE]", message_id)
                 else:
-                    self.chat_handler.receive_stream_data(session_id, finding_buffer, message_id)
+                    self.parse_llm_stream(session_id, username, finding_buffer, message_id)
                     finding_buffer = ""
 
         complete_buffer = complete_buffer.replace('[DONE]', '')
         return complete_buffer
 
-    def handle_llm_response(self, response, session_id, streaming=False, nesting_level=0):
+    def parse_llm_stream(self, session_id, username, data_chunk, message_id):
+
+        self.stream_manager.add_to_text_buffer(session_id, data_chunk)
+
+        """Parse incoming LLM stream data and immediately send it back without waiting for [DONE]."""
+        if session_id not in self.temp_buffers:
+            self.temp_buffers[session_id] = {}
+
+        if message_id not in self.temp_buffers[session_id]:
+            self.temp_buffers[session_id][message_id] = ""
+
+        # Accumulate data chunk
+        self.temp_buffers[session_id][message_id] += data_chunk
+
+        # If the message is complete, finalize it
+        if self.temp_buffers[session_id][message_id].strip().endswith("[DONE]"):
+            complete_message = self.temp_buffers[session_id][message_id].replace("[DONE]", "").strip()
+            self.temp_buffers[session_id].pop(message_id)  # Clear the temp buffer for this message
+
+            # Finalize the message
+            self.chat_handler.finalize_message(username, complete_message, "AI")
+
+            # If no more messages remain for this session, clear the session from temp_buffers
+            if not self.temp_buffers[session_id]:
+                self.temp_buffers.pop(session_id)
+
+
+    def handle_llm_response(self, response, session_id, username, streaming=False, nesting_level=0):
         logger.info(
             f"Handling LLM response for session {session_id}, streaming={streaming}, nesting_level={nesting_level}, response={response}.")
         if nesting_level > self.MAX_NESTING_LEVEL:
@@ -146,25 +173,25 @@ class LLMAssistant(Assistant):
 
         try:
             if streaming:
-                response = self.stream_immediate_response(response, session_id)
+                response = self.stream_immediate_response(response, session_id, username)
                 response_dict = json.loads(response)
                 if 'immediate_response' in response_dict:
                     del response_dict['immediate_response']
                 if 'action' in response_dict:
-                    return self.process_response_content(json.dumps(response_dict), session_id, nesting_level)
+                    return self.process_response_content(json.dumps(response_dict), session_id, username, nesting_level)
                 else:
                     return
             else:
                 full_response = ''.join(response())
                 if "\"name\": \"send_message\"" not in full_response:
-                    return self.process_response_content(full_response, session_id, nesting_level)
+                    return self.process_response_content(full_response, session_id, username, nesting_level)
                 else:
                     return
         except Exception as e:
             logger.exception(f"Error handling LLM response for session {session_id}: {e}")
             return jsonify({"error": str(e)})
 
-    def process_response_content(self, generated_text, session_id, nesting_level):
+    def process_response_content(self, generated_text, session_id, username, nesting_level):
         logger.info(f"Processing response content for session {session_id}, nesting_level={nesting_level}, generated_text={generated_text}")
         if nesting_level > self.MAX_NESTING_LEVEL:
             return jsonify({"error": "Max nesting level reached, aborting to avoid infinite recursion."})
@@ -179,12 +206,15 @@ class LLMAssistant(Assistant):
             parameters = action.get("parameters", {})
             show_results_to_user = parameters.pop("showResultsToUser", False)
             if show_results_to_user:
+                message_id = str(uuid.uuid4())
+                self.parse_llm_stream(session_id, username, function_response.response, message_id)
+                self.parse_llm_stream(session_id, username, "[DONE]", message_id)
                 return
 
             context = self.chat_handler.get_context(session_id)
             next_chunk = self.send_message_to_llm(SYSTEM_MESSAGE, None, response_json['self_message'],
                                                   function_response, context, True)
-            return self.handle_llm_response(next_chunk, session_id, True, nesting_level + 1)
+            return self.handle_llm_response(next_chunk, session_id, username, True, nesting_level + 1)
         except (ValueError, KeyError, json.JSONDecodeError) as e:
             logger.error(f"Error processing response content: {e}")
             error_response = {
@@ -203,6 +233,7 @@ class LLMAssistant(Assistant):
                 self.send_message_to_llm(SYSTEM_MESSAGE, None, response_json['self_message'],
                                          json.dumps(error_response), context),
                 session_id,
+                username,
                 True,
                 nesting_level + 1
             )
@@ -231,10 +262,10 @@ class LLMAssistant(Assistant):
         else:
             return self.llm_client.generate_response(prompt, system_message)
 
-    def message_assistant(self, session_id, user_message):
+    def message_assistant(self, session_id, username, user_message):
         logger.info(f"User message received for session {session_id}: {user_message}")
-        self.chat_handler.store_human_context(session_id, user_message)
-        context = self.chat_handler.get_context(session_id)
+        self.chat_handler.store_human_context(username, user_message)
+        context = self.chat_handler.get_context(username)
         # Use the streaming option in send_message_to_llm
         response_stream = self.send_message_to_llm(
             SYSTEM_MESSAGE + "\n" + FUNCTION_LIST,
@@ -244,4 +275,4 @@ class LLMAssistant(Assistant):
             context,
             streaming=True
         )
-        self.handle_llm_response(response_stream, session_id, True, )
+        self.handle_llm_response(response_stream, session_id, username, True, )

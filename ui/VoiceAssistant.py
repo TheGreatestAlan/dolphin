@@ -10,7 +10,7 @@ class VoiceAssistant:
 
     def start_session(self):
         try:
-            session_id = self.agent_client.start_session()
+            session_id = self.agent_client.get_or_create_user()
             print(f"Started session with ID: {session_id}")
             return session_id
         except Exception as e:

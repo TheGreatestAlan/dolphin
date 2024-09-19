@@ -61,7 +61,7 @@ class FunctionMapper:
                 "send_message": lambda params: self.chat_handler.send_message(session_id, params["content"]),
                 "list_actions": lambda _: self.list_functions(),
                 "poll_response": lambda params: self.chat_handler.poll_response(session_id),
-                "start_session": lambda _: self.chat_handler.start_session(),
+                "start_session": lambda _: self.chat_handler.get_or_create_user(),
                 "end_session": lambda params: self.chat_handler.end_session(session_id),
                 "knowledge_query": lambda params: self.knowledge_query.query(params["query"])
             }
@@ -87,11 +87,6 @@ class FunctionMapper:
                         }
 
             response = action_mapping[action_name](parameters)
-
-            if show_results_to_user:
-                message_id = str(uuid.uuid4())
-                self.chat_handler.receive_stream_data(session_id, response.response, message_id)
-                self.chat_handler.receive_stream_data(session_id, "[DONE]", message_id)
 
             return self.wrap_to_action_response(response, action_name)
 
