@@ -7,10 +7,18 @@ from langchain_core.messages import HumanMessage, AIMessage
 from agent_server.FunctionResponse import FunctionResponse, Status
 from agent_server.integrations.StreamManager import StreamManager
 
+# Hemmingway Bridge
+# so we need to rework the idea of having a userid that gets created, and then having
+# a session id.  When the user is given a session they use that to handle the resources
+# but the userid itself is used basically where the session was
+# in this class, we need to suss out when to use a session id and when to use a userid
+# we should probably separate out the streaming the response back to the user out of this
+# and just directly call the stream manager, then once the response is finalized, we can
+# save it here.
 
 class ChatHandler:
     def __init__(self, stream_manager: StreamManager, sessions_file_path='sessions.json'):
-        self.sessions = {}
+        self.users = {}
         self.sessions_file_path = sessions_file_path
         self.result_cache = {}
         self.memories = {}  # Dictionary to hold ConversationBufferMemory instances
@@ -24,7 +32,7 @@ class ChatHandler:
         try:
             # Save sessions and their corresponding memory states
             sessions_data = {
-                "sessions": self.sessions,
+                "sessions": self.users,
                 "memories": {session_id: self.serialize_memory(memory) for session_id, memory in self.memories.items()}
             }
             with open(self.sessions_file_path, 'w') as file:
@@ -36,12 +44,12 @@ class ChatHandler:
     def load_sessions_from_file(self):
         try:
             if not os.path.exists(self.sessions_file_path):
-                self.sessions = {}
+                self.users = {}
                 self.save_sessions_to_file()
 
             with open(self.sessions_file_path, 'r') as file:
                 sessions_data = json.load(file)
-                self.sessions = sessions_data.get("sessions", {})
+                self.users = sessions_data.get("sessions", {})
                 # Load memory states for each session
                 self.memories = {
                     session_id: self.deserialize_memory(memory_data)
@@ -50,7 +58,7 @@ class ChatHandler:
             print("Sessions successfully loaded from file.")
         except (IOError, json.JSONDecodeError) as err:
             print(f"Error loading sessions from file: {err}")
-            self.sessions = {}  # Reset or initialize if loading fails
+            self.users = {}  # Reset or initialize if loading fails
 
     def cache_result(self, session_id, content):
         if session_id not in self.result_cache:
@@ -58,8 +66,8 @@ class ChatHandler:
         self.result_cache[session_id] += "\n" + content.response
 
     def send_message(self, session_id, content, role="AI"):
-        if session_id not in self.sessions:
-            self.sessions[session_id] = []
+        if session_id not in self.users:
+            self.users[session_id] = []
 
         # Retrieve the cached result for the session, if any
         full_content = content
@@ -68,7 +76,7 @@ class ChatHandler:
             del self.result_cache[session_id]
 
         if full_content.strip():
-            self.sessions[session_id].append({"role": role, "message": full_content})
+            self.users[session_id].append({"role": role, "message": full_content})
             self.save_sessions_to_file()
             print(f"Sending message to user: {full_content}")
             return FunctionResponse(Status.SUCCESS, "completed")
@@ -111,11 +119,11 @@ class ChatHandler:
 
     def store_human_context(self, session_id, message):
         """Store a human message in the session context from an external source."""
-        if session_id not in self.sessions:
-            self.sessions[session_id] = []
+        if session_id not in self.users:
+            self.users[session_id] = []
 
         if message.strip():
-            self.sessions[session_id].append({"role": "Human", "message": message})
+            self.users[session_id].append({"role": "Human", "message": message})
             self.finalize_message(session_id, message, "Human")
             self.save_sessions_to_file()
         else:
@@ -128,16 +136,23 @@ class ChatHandler:
             return context.get("history", "")
         return ""
 
-    def start_session(self):
+    def start_session(self, session_id=None):
+        if session_id and session_id in self.users:
+            # If session already exists, return the existing session ID and pick up where it left off
+            print(f"Resuming session: {session_id}")
+            return session_id
+
+        # If no session ID is provided or session doesn't exist, create a new session
         session_id = os.urandom(16).hex()
-        self.sessions[session_id] = []
+        self.users[session_id] = []
         self.save_sessions_to_file()
         self.memories[session_id] = ConversationBufferMemory()  # Create memory for new session
+        print(f"Starting new session: {session_id}")
         return session_id
 
     def end_session(self, session_id):
-        if session_id in self.sessions:
-            del self.sessions[session_id]
+        if session_id in self.users:
+            del self.users[session_id]
             self.save_sessions_to_file()
             if session_id in self.memories:
                 del self.memories[session_id]  # Remove memory for ended session

@@ -44,28 +44,22 @@ class StreamManager:
                 del listeners[session_id]
                 self.cleanup_resources(session_id, audio)
 
-    def end_text_stream(self, session_id):
+    def end_streams(self, session_id):
         """End the text stream for a specific session and clean up resources."""
         if session_id in self.stream_threads:
             # Set the stop event to signal the thread to stop
             self.stop_events[session_id].set()
             # Optionally join the thread to ensure it's completed
             self.stream_threads[session_id].join()
-            # Clean up resources associated with the text stream
-            self.cleanup_resources(session_id, audio=False)
             # Remove the thread and stop event after cleanup
             del self.stream_threads[session_id]
             del self.stop_events[session_id]
-        else:
-            # If no thread exists, just clean up resources
-            self.cleanup_resources(session_id, audio=False)
+        self.cleanup_resources(session_id)
 
-    def cleanup_resources(self, session_id, audio=False):
+    def cleanup_resources(self, session_id):
         """Clean up resources like queues and TTS instances if no listeners remain."""
-        if audio:
-            if session_id in self.tts_instances:
-                self.tts_instances[session_id].stop()  # Stop the OpenAITTS instance
-                del self.tts_instances[session_id]
-        else:
-            if session_id in self.text_buffers:
-                del self.text_buffers[session_id]  # Remove the text queue
+        if session_id in self.tts_instances:
+           self.tts_instances[session_id].stop()  # Stop the OpenAITTS instance
+           del self.tts_instances[session_id]
+        if session_id in self.text_buffers:
+           del self.text_buffers[session_id]  # Remove the text queue

@@ -59,7 +59,6 @@ class LLMAssistant(Assistant):
         self.FUNCTION_LIST = ''
 
         self.read_system_message()
-        self.chat_handler.load_sessions_from_file()
         self.read_function_list()
 
     def read_system_message(self, file_path='./prompt/SystemPrompt.txt'):
