@@ -2,7 +2,6 @@ import logging
 import os
 import json
 import queue
-from datetime import time
 from threading import Thread
 from llm_assistant import LLMAssistant
 from assistant import Assistant
@@ -13,7 +12,7 @@ from agent_server.integrations.StreamManager import StreamManager
 
 app = Flask(__name__)
 
-sessions_file_path = '../orchestraion/sessions.json'
+sessions_file_path = '../orchestration/sessions.json'
 stream_manager = StreamManager()
 chat_handler = ChatHandler(sessions_file_path)
 assistant: Assistant = LLMAssistant(chat_handler, stream_manager)
@@ -23,7 +22,7 @@ user_sessions = {}
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-HEARTBEAT_INTERVAL = 5  # Heartbeat interval set to 5 seconds
+HEARTBEAT_INTERVAL = 60  # Heartbeat interval set to 5 seconds
 
 def stream_text_in_thread(session_id):
     text_queue = stream_manager.listen_to_text_stream(session_id)
