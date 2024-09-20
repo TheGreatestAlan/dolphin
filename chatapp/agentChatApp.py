@@ -1,8 +1,8 @@
 import base64
 import json
+import time
 import tkinter as tk
 from tkinter import scrolledtext
-
 import numpy as np
 import requests
 import os
@@ -10,8 +10,6 @@ import threading
 import sounddevice as sd
 
 
-# Hemmingway Bridge:
-# we need to handle the heartbeating and reconnecting here
 class ChatApp():
     def __init__(self, root):
         self.root = root
@@ -22,7 +20,7 @@ class ChatApp():
         self.agent_url = os.getenv('AGENT_URL', 'http://127.0.0.1:5000')
 
         # Read username from environment variable
-        self.username = os.getenv('AGENT_API_USERNAME', "BasicBitch")
+        self.username = os.getenv('AGENT_API_USERNAME', "basicbitch")
         if not self.username:
             raise EnvironmentError("The 'AGENT_API_USERNAME' environment variable is not set.")
 
@@ -55,6 +53,9 @@ class ChatApp():
         self.message_history = []
         self.current_message = ""
 
+        self.heartbeat_interval = None
+        self.last_heartbeat_time = None
+
         self.start_session()
 
     def start_session(self):
@@ -63,18 +64,62 @@ class ChatApp():
         thread.start()
 
     def _start_session(self):
-        # Add username to the payload for session creation
-        data = {'username': self.username}
+        retries = 0
+        max_retries = 5
+        retry_delay = 30  # start with 1 second delay
 
-        response = requests.post(f"{self.agent_url}{self.agent_api_base_path}/start_session",
-                                 json=data, headers=self.auth_headers, verify=self.skipSSL)
+        while retries < max_retries:
+            # Add username to the payload for session creation
+            data = {'username': self.username}
 
-        if response.ok:
-            self.session_id = response.json()['session_id']
-            self.append_chat("System", "Session started.")
-            self.listen_to_stream()
-        else:
-            self.append_chat("System", f"Failed to start session: {response.text}")
+            try:
+                response = requests.post(f"{self.agent_url}{self.agent_api_base_path}/start_session",
+                                         json=data, headers=self.auth_headers, verify=self.skipSSL)
+
+                if response.ok:
+                    response_data = response.json()
+                    self.session_id = response_data['session_id']
+                    self.heartbeat_interval = response_data.get('heartbeat_interval', 30)  # default to 30 seconds if not provided
+                    self.last_heartbeat_time = time.time()
+
+                    self.append_chat("System", "Session started.")
+                    self.listen_to_stream()
+
+                    # Start a thread to monitor heartbeat timeout
+                    thread = threading.Thread(target=self.monitor_heartbeat)
+                    thread.daemon = True
+                    thread.start()
+
+                    break  # Exit the loop if session starts successfully
+
+                else:
+                    self.append_chat("System", f"Failed to start session: {response.text}")
+
+            except requests.exceptions.RequestException as e:
+                self.append_chat("System", f"Request failed: {e}")
+
+            # Increment retries and implement exponential backoff
+            retries += 1
+            if retries < max_retries:
+                self.append_chat("System", f"Retrying to start session in {retry_delay} seconds (Attempt {retries}/{max_retries})...")
+                time.sleep(retry_delay)
+                retry_delay *= 2  # Exponential backoff
+
+        if retries == max_retries:
+            self.append_chat("System", f"Max retries reached. Failed to start session.")
+
+    def monitor_heartbeat(self):
+        while True:
+            if self.last_heartbeat_time is None:
+                continue
+
+            time_since_last_heartbeat = time.time() - self.last_heartbeat_time
+            if time_since_last_heartbeat > 2 * self.heartbeat_interval:
+                print("System", "Heartbeat timeout. Attempting to create a new session...")
+                self.start_session()
+                break  # exit the loop to let the new session take over
+
+            time.sleep(1)  # check every second
 
     def send_prompt(self, event=None):
         prompt = self.prompt_entry.get()
@@ -112,12 +157,8 @@ class ChatApp():
                             data_json = decoded_line.split('data: ')[1]
                             data = json.loads(data_json)
 
-                            # Check if the message is a heartbeat or an actual message
-                            if 'heartbeat' in data:
-                                # Print heartbeat to console and append to chat if necessary
-                                print(f"Heartbeat received: {data['heartbeat']}")
-                                self.append_chat("System", f"Heartbeat: {data['heartbeat']}")
-                            elif 'message' in data:
+                            # Handle actual message
+                            if 'message' in data:
                                 message = data.get('message')
                                 if message == "[DONE]":
                                     self.message_history.append(f"Agent: {self.current_message.strip()}")
@@ -127,6 +168,10 @@ class ChatApp():
                                     self.current_message += message
                                     self.update_chat_display()
 
+                            # Handle heartbeat message
+                            elif 'heartbeat' in data:
+                                self.last_heartbeat_time = time.time()  # Update the last heartbeat time
+
             except requests.exceptions.RequestException as e:
                 self.append_chat("System", f"Failed to connect to stream: {e}")
 
@@ -134,11 +179,11 @@ class ChatApp():
         thread.daemon = True
         thread.start()
 
+
     def listen_to_audio_stream(self):
         def stream_audio():
             try:
-                response = requests.get(f"{self.agent_url}{self.agent_api_base_path}/streamaudio/{self.session_id}",
-                                        stream=True, headers=self.auth_headers, verify=self.skipSSL)
+                response = requests.get(f"{self.agent_url}{self.agent_api_base_path}/streamaudio/{self.session_id}", stream=True, headers=self.auth_headers, verify=self.skipSSL)
 
                 audio_buffer = []  # Buffer to accumulate audio data
                 buffer_size_threshold = 8192  # Adjust this threshold as needed
@@ -176,6 +221,7 @@ class ChatApp():
 
         # Reshape for stereo channels if necessary
         audio_data = audio_data.reshape(-1, channels)
+
 
         # Play audio using sounddevice
         sd.play(audio_data, samplerate=sample_rate, blocking=True)
@@ -220,9 +266,7 @@ class ChatApp():
     def end_session(self):
         if self.session_id:
             try:
-                requests.delete(f"{self.agent_url}{self.agent_api_base_path}/end_session",
-                                json={'session_id': self.session_id}, headers=self.auth_headers,
-                                verify=self.skipSSL)
+                requests.delete(f"{self.agent_url}{self.agent_api_base_path}/end_session", json={'session_id': self.session_id}, headers=self.auth_headers, verify=self.skipSSL)
             except requests.exceptions.RequestException as e:
                 self.append_chat("System", f"Failed to end session: {e}")
         self.root.destroy()
