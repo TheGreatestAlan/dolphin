@@ -178,7 +178,8 @@ class LLMAssistant(Assistant):
                 if 'immediate_response' in response_dict:
                     del response_dict['immediate_response']
                 if 'action' in response_dict:
-                    return self.process_response_content(json.dumps(response_dict), session_id, username, nesting_level)
+                    show_result_to_user = response_dict.get('action', {}).get('show_results_to_user', False)
+                    return self.process_response_content(json.dumps(response_dict), show_result_to_user, session_id, username, nesting_level)
                 else:
                     return
             else:
@@ -191,7 +192,7 @@ class LLMAssistant(Assistant):
             logger.exception(f"Error handling LLM response for session {session_id}: {e}")
             return jsonify({"error": str(e)})
 
-    def process_response_content(self, generated_text, session_id, username, nesting_level):
+    def process_response_content(self, generated_text, show_results_to_user, session_id, username, nesting_level):
         logger.info(f"Processing response content for session {session_id}, nesting_level={nesting_level}, generated_text={generated_text}")
         if nesting_level > self.MAX_NESTING_LEVEL:
             return jsonify({"error": "Max nesting level reached, aborting to avoid infinite recursion."})
@@ -202,9 +203,6 @@ class LLMAssistant(Assistant):
                 raise ValueError("Incorrect response format")
 
             function_response = self.function_mapper.handle_function_call(response_json, session_id)
-            action = response_json.get("action")
-            parameters = action.get("parameters", {})
-            show_results_to_user = parameters.pop("showResultsToUser", False)
             if show_results_to_user:
                 message_id = str(uuid.uuid4())
                 self.parse_llm_stream(session_id, username, function_response.response, message_id)

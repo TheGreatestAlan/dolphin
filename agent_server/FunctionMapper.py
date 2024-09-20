@@ -50,7 +50,6 @@ class FunctionMapper:
             action = prompt.get("action")
             parameters = action.get("parameters", {})
             action_name = action.get("action")
-            show_results_to_user = parameters.pop("showResultsToUser", False)
 
             action_mapping = {
                 "get_inventory": lambda _: self.inventory.get_inventory(),
