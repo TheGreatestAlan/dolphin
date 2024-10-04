@@ -118,6 +118,24 @@
           }
         }
       }
+    },
+    {
+        "action": "event_alert_action",
+        "parameters": {
+          "event_name": "string"
+          "message": "string",
+        },
+        "example": {
+          "query": "Hey when I get home can you remind me to put in the laundry?",
+          "response": {
+            "action": "event_alert_action",
+            "parameters": {
+              "event_name": "arrivedHomeEvent"
+              "message": "put in laundry"
+            }
+          }
+        },
+        "valid_event_names":["arrivedHomeEvent"]
     }
   ]
 }

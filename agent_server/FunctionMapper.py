@@ -1,20 +1,27 @@
 import json
 import os
-import uuid
 
 from agent_server.FunctionResponse import FunctionResponse, Status
 from agent_server.InventoryFunctionGenerator import InventoryFunctionGenerator
 from agent_server.integrations.ChatHandler import ChatHandler
 from agent_server.integrations.Inventory import Inventory
 from agent_server.integrations.KnowledgeQuery import KnowledgeQuery
+from agent_server.integrations.local_device_action import LocalDeviceAction
+
+
+# HEMMINGWAY BRIDGE
+# Ok you implemented a function call in the android app.  You need to create the functionality
+# here to do that.  That includes changing your function calls here, and also adding the function
+# piece of the calls to sse 
 
 
 class FunctionMapper:
-    def __init__(self, inventory: Inventory, function_generator: InventoryFunctionGenerator, chat_handler: ChatHandler, knowledge_query: KnowledgeQuery):
+    def __init__(self, inventory: Inventory, function_generator: InventoryFunctionGenerator, chat_handler: ChatHandler, knowledge_query: KnowledgeQuery, local_device_action: LocalDeviceAction):
         self.inventory = inventory
         self.function_generator = function_generator
         self.chat_handler = chat_handler
         self.knowledge_query = knowledge_query
+        self.local_device_action = local_device_action;
         self.cache = {}  # Cache to store results temporarily
 
         # Define expected method signatures
@@ -29,7 +36,8 @@ class FunctionMapper:
             "poll_response": "poll_response(session_id: str)",
             "start_session": "start_session()",
             "end_session": "end_session(session_id: str)",
-            "knowledge_query": "knowledge_query(query: str)"
+            "knowledge_query": "knowledge_query(query: str)",
+            "event_alert_action": "event_alert_action(event_name: str, message: str, session_id: str)"
         }
 
     def wrap_to_action_response(self, function_response: FunctionResponse, action_name:str) -> dict:
@@ -62,7 +70,9 @@ class FunctionMapper:
                 "poll_response": lambda params: self.chat_handler.poll_response(session_id),
                 "start_session": lambda _: self.chat_handler.get_or_create_user(),
                 "end_session": lambda params: self.chat_handler.end_session(session_id),
-                "knowledge_query": lambda params: self.knowledge_query.query(params["query"])
+                "knowledge_query": lambda params: self.knowledge_query.query(params["query"]),
+                "event_alert_action": lambda params: self.local_device_action.event_alert_action(params["event_name"], params["message"], session_id)
+
             }
 
             if action_name not in action_mapping:
@@ -74,7 +84,8 @@ class FunctionMapper:
                 "create_items": ["container", "items"],
                 "delete_items": ["container", "items"],
                 "send_message": ["content"],
-                "knowledge_query": ["query"]
+                "knowledge_query": ["query"],
+                "event_alert_action": ["event_name", "message"]
             }
 
             if action_name in required_params:

@@ -10,6 +10,7 @@ from agent_server.InventoryFunctionGenerator import InventoryFunctionGenerator
 from agent_server.integrations.InventoryRestClient import InventoryClient
 from agent_server.integrations.KnowledgeQuery import KnowledgeQuery
 from agent_server.integrations.StreamManager import StreamManager
+from agent_server.integrations.local_device_action import LocalDeviceAction
 from llms.RestLLM import RestLLM
 from llms.ChatGPT4 import ChatGPT4
 from FunctionMapper import FunctionMapper
@@ -52,8 +53,9 @@ class LLMAssistant(Assistant):
         smart_finding_inventory_client = SmartFindingInventoryClient(rest_inventory_client, self.llm_client)
         function_generator = InventoryFunctionGenerator(self.llm_client)
         knowledge_query = KnowledgeQuery(self.llm_client)
+        local_device_action = LocalDeviceAction(stream_manager)
         self.function_mapper = FunctionMapper(smart_finding_inventory_client, function_generator, self.chat_handler,
-                                              knowledge_query)
+                                              knowledge_query, local_device_action)
 
         self.SYSTEM_MESSAGE = ''
         self.FUNCTION_LIST = ''
@@ -261,6 +263,8 @@ class LLMAssistant(Assistant):
             return self.llm_client.generate_response(prompt, system_message)
 
     def message_assistant(self, session_id, username, user_message):
+        if not user_message:
+            return
         logger.info(f"User message received for session {session_id}: {user_message}")
         self.chat_handler.store_human_context(username, user_message)
         context = self.chat_handler.get_context(username)

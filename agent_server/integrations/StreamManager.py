@@ -4,6 +4,8 @@ from agent_server.tts.OpenAITTS import OpenAITTS
 
 
 class StreamManager:
+    FUNCTION = "[!FUNCTION!]"
+
     def __init__(self):
         self.text_buffers = {}  # Dictionary to hold queues for messages by session_id
         self.tts_instances = {}  # Dictionary to hold OpenAITTS instances by session_id

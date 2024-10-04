@@ -10,6 +10,9 @@ from flask import Flask, request, jsonify, Response
 
 from agent_server.integrations.StreamManager import StreamManager
 
+# HEMMINGWAY BRIDGE:
+# you'll probably wan tto finally rig up a way to simulate calls to the llm so you stop spending money
+
 app = Flask(__name__)
 
 sessions_file_path = '../orchestration/sessions.json'
@@ -33,7 +36,10 @@ def stream_text_in_thread(session_id):
                 try:
                     # Wait for a new message for up to HEARTBEAT_INTERVAL seconds
                     text_chunk = text_queue.get(timeout=HEARTBEAT_INTERVAL)
-                    yield f"data: {json.dumps({'message': text_chunk})}\n\n"
+                    if text_chunk.startswith(StreamManager.FUNCTION):
+                        yield f"data: {json.dumps({'function': text_chunk.replace(StreamManager.FUNCTION,'')})}\n\n"
+                    else:
+                        yield f"data: {json.dumps({'message': text_chunk})}\n\n"
                 except queue.Empty:
                     # If no message has been sent within the heartbeat interval, send a heartbeat
                     yield f"data: {json.dumps({'heartbeat': 'keep-alive'})}\n\n"
