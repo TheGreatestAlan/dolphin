@@ -1,0 +1,28 @@
+Function: create_items
+Description: Adds specified items to a particular container.
+
+Parameters:
+- container (string): The identifier of the container.
+- items (array of strings): List of items to add to the container.
+
+Example:
+User Query: "add a hammer to container 5"
+Response:
+{
+  "action": "create_items",
+  "parameters": {
+    "container": "5",
+    "items": ["hammer"]
+  }
+}
+
+Additional Example:
+User Query: "In container 7 add a screwdriver, gorilla glue, nerf balls, and a fan"
+Response:
+{
+  "action": "create_items",
+  "parameters": {
+    "container": "7",
+    "items": ["screwdriver", "gorilla glue", "nerf balls", "fan"]
+  }
+}

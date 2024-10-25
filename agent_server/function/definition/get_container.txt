@@ -1,0 +1,15 @@
+Function: get_container
+Description: Retrieves the contents of a specific container.
+
+Parameters:
+- container_id (string): The identifier of the container.
+
+Example:
+User Query: "What's in container 5?"
+Response:
+{
+  "action": "get_container",
+  "parameters": {
+    "container_id": "5"
+  }
+}

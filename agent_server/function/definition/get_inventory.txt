@@ -1,0 +1,12 @@
+Function: get_inventory
+Description: Retrieves the entire inventory without specifying a container.
+
+Parameters: None
+
+Example:
+User Query: "retrieve the entire inventory"
+Response:
+{
+  "action": "get_inventory",
+  "parameters": {}
+}

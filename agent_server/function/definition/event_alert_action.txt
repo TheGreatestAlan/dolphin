@@ -1,0 +1,20 @@
+Function: event_alert_action
+Description: Sets an event-based alert with a specific message for a defined event.
+
+Parameters:
+- event_name (string): The name of the event to set an alert for. Valid event names include "arrivedHomeEvent".
+- message (string): The alert message to display.
+
+Example:
+User Query: "Hey when I get home can you remind me to put in the laundry?"
+Response:
+{
+  "action": "event_alert_action",
+  "parameters": {
+    "event_name": "arrivedHomeEvent",
+    "message": "put in laundry"
+  }
+}
+
+Valid Event Names:
+- arrivedHomeEvent

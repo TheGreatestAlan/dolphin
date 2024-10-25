@@ -1,0 +1,15 @@
+Function: find_location
+Description: Finds the location of a specified item by its name.
+
+Parameters:
+- item_name (string): The name of the item to locate.
+
+Example:
+User Query: "find the location of item named screwdriver"
+Response:
+{
+  "action": "find_location",
+  "parameters": {
+    "item_name": "screwdriver"
+  }
+}

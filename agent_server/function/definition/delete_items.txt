@@ -1,0 +1,28 @@
+Function: delete_items
+Description: Removes specified items from a particular container.
+
+Parameters:
+- container (string): The identifier of the container.
+- items (array of strings): List of items to remove from the container.
+
+Example:
+User Query: "remove a screwdriver from container 10"
+Response:
+{
+  "action": "delete_items",
+  "parameters": {
+    "container": "10",
+    "items": ["screwdriver"]
+  }
+}
+
+Additional Example:
+User Query: "Oops I messed up, delete the phone from container 6"
+Response:
+{
+  "action": "delete_items",
+  "parameters": {
+    "container": "6",
+    "items": ["phone"]
+  }
+}
