@@ -26,6 +26,16 @@ class TestFunctionChooserIntegration(unittest.TestCase):
         # Assert that the chosen function is "get_container"
         self.assertEqual(chosen_function, "get_container")
 
+    def test_choose_function_multiple(self):
+        # Define a user request that should not match any known function
+        user_request = "if there's tumeric in my inventory can you delete it?"
+
+        # Use the FunctionChooser to select the function
+        chosen_function = self.function_chooser.choose_function(user_request)
+
+        # Assert that the chosen function is "none"
+        self.assertEqual(chosen_function, "none")
+
     def test_choose_function_invalid_request(self):
         # Define a user request that should not match any known function
         user_request = "This is a random question that doesn't match any function."

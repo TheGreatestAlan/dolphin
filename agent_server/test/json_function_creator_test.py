@@ -37,5 +37,6 @@ class TestJsonFunctionCreator(unittest.TestCase):
         # Assert that the result matches the expected JSON
         self.assertEqual(result, expected_result)
 
+
 if __name__ == "__main__":
     unittest.main()
