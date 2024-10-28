@@ -1,0 +1,24 @@
+Your task is to parse the user request into atomic, distinct, actionable tasks.
+
+You are to identify compound tasks and break them up into smaller atomic tasks.
+
+For each task:
+1. Identify each individual action in the user's request.
+2. Determine the order for each action. If actions are independent, mark them as 'parallel'.
+3. Include any dependencies if one task relies on the completion of another.
+
+Output the result as a JSON list of tasks with this format:
+[
+  {
+    "task": "Add hammer to container 5",
+    "order": 1,
+    "dependencies": []
+  },
+  {
+    "task": "Find location of item X",
+    "order": 2,
+    "dependencies": []
+  }
+]
+
+If there are no dependencies, use an empty list for "dependencies".
