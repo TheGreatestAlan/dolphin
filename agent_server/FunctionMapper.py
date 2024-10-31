@@ -56,8 +56,23 @@ class FunctionMapper:
                 raise ValueError("Invalid function call format: missing 'action'")
 
             action = prompt.get("action")
-            parameters = action.get("parameters", {})
-            action_name = action.get("action")
+
+            # Check if `action` is a string
+            if isinstance(action, str):
+                # Process as a string action
+                parameters = prompt.get("parameters", {})
+                action_name = prompt.get("action")
+
+            elif isinstance(action, dict):
+                # Process as a dictionary with potential parameters
+                parameters = action.get("parameters", {})
+                action_name = action.get("action")
+
+            else:
+                # Handle case where action is neither a string nor a dictionary
+                action_name = None
+                parameters = {}
+                # Optionally raise an error or log an invalid action type
 
             action_mapping = {
                 "get_inventory": lambda _: self.inventory.get_inventory(),
@@ -110,7 +125,7 @@ class FunctionMapper:
     def list_functions(self) -> FunctionResponse:
         try:
             script_dir = os.path.dirname(os.path.abspath(__file__))
-            file_path = os.path.join(script_dir, 'prompt/functionList.txt')
+            file_path = os.path.join(script_dir, 'prompt/functionList.json')
             with open(file_path, 'r') as file:
                 functions = json.load(file)
             return FunctionResponse(Status.SUCCESS, functions)

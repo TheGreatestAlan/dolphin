@@ -15,13 +15,12 @@ class TestSequencer(unittest.TestCase):
         self.sequencer = Sequencer(self.ollama_llm)
 
     def test_parse_tasks_success(self):
-        user_request = "Identify Yellow objects in container 1."
+        user_request = "what's in container 4?"
         tasks = self.sequencer.parse_tasks(user_request)
 
         # Expected output matches the mocked response structure
         expected_tasks = [
-            {"task": "Add hammer to container 5", "order": 1, "dependencies": []},
-            {"task": "Find location of item X", "order": 2, "dependencies": []}
+            {"task": "what's in container 4?", "function": "get_container", "order": 1},
         ]
         self.assertEqual(tasks, expected_tasks)
 

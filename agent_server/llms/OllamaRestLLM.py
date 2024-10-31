@@ -11,41 +11,25 @@ class OllamaLLM(LLMInterface):
     def generate_response(self, prompt, system_message):
         payload = {
             "model": self.model_name,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": system_message
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
+            "system": system_message,
+            "prompt": prompt,
             "stream": False
         }
 
         print("PROMPT::\n", prompt)
-        response = requests.post(self.base_url + "/api/chat", json=payload)
+        response = requests.post(self.base_url + "/api/generate", json=payload)
         response.raise_for_status()
         response_json = response.json()
         print("RESPONSE::\n", response_json)
 
         # Adjusting to access the content based on Ollama response format
-        return response_json.get('message', {}).get('content', '')
+        return response_json.get('response', {})
 
     def stream_response(self, prompt, system_message):
         data = {
             "model": self.model_name,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": system_message
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
+            "system": system_message,
+            "prompt": prompt,
             "stream": True
         }
         headers = {"Content-Type": "application/json"}
@@ -60,7 +44,7 @@ class OllamaLLM(LLMInterface):
                     if data.strip() == "[DONE]":
                         break
                     if data:
-                        message = json.loads(data).get('message', {}).get('content', '')
+                        message = json.loads(data).get('response', {})
                         yield message
 
 
