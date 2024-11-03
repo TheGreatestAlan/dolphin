@@ -23,7 +23,11 @@ class OllamaLLM(LLMInterface):
         print("RESPONSE::\n", response_json)
 
         # Adjusting to access the content based on Ollama response format
-        return response_json.get('response', {})
+        string_res = response_json.get('response', {})
+        # Strip ```json``` and ``` delimiters if present
+        if string_res.startswith("```json") and string_res.endswith("```"):
+            return string_res[7:-3].strip()
+        return string_res
 
     def stream_response(self, prompt, system_message):
         data = {
