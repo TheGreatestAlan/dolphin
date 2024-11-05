@@ -7,9 +7,15 @@ from agent_server.llms.LLMInterface import LLMInterface
 
 
 class ChatGPT4(LLMInterface):
-    def __init__(self):
-        self.api_key = os.environ.get("API_KEY")
-        self.api_url = os.environ.get("API_URL")
+    def __init__(self, api_key=None):
+        # Use the provided API key and URL if given, otherwise check environment variables
+        self.api_key = api_key or os.environ.get("API_KEY")
+        self.api_url = 'https://api.openai.com/v1/chat/completions'
+
+        # Ensure the API key and URL are available
+        if not self.api_key or not self.api_url:
+            raise ValueError(
+                "API key and API URL must be provided either as arguments or set in environment variables.")
 
     def generate_response(self, prompt, system_message):
         data = {

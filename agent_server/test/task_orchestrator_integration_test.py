@@ -1,5 +1,7 @@
 import os
 import unittest
+
+from agent_server.llms.LLMFactory import LLMFactory, ModelType
 from agent_server.llms.OllamaRestLLM import OllamaLLM
 from agent_server.task_orchestrator import TaskOrchestrator
 
@@ -8,8 +10,10 @@ class TestTaskOrchestratorIntegration(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         # Set up the Ollama instance as the LLMInterface implementation
-        cls.ollama_llm = OllamaLLM(base_url="http://localhost:11434", model_name="qwen2.5:3b")
         os.environ["ORGANIZER_SERVER_URL"]= "http://127.0.0.1:8080"
+        os.environ["ENCRYPTION_PASSWORD"] = ''
+        cls.ollama_llm = LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_1_8B)
+        #cls.ollama_llm = OllamaLLM(base_url="http://localhost:11434", model_name="qwen2.5:3b")
 
 
         # Instantiate the TaskOrchestrator directly, which initializes and holds all agents
