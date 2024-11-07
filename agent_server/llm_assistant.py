@@ -11,6 +11,7 @@ from agent_server.integrations.InventoryRestClient import InventoryClient
 from agent_server.integrations.KnowledgeQuery import KnowledgeQuery
 from agent_server.integrations.StreamManager import StreamManager
 from agent_server.integrations.local_device_action import LocalDeviceAction
+from agent_server.llms.LLMFactory import LLMFactory, ModelType
 from llms.RestLLM import RestLLM
 from llms.ChatGPT4 import ChatGPT4
 from FunctionMapper import FunctionMapper
@@ -43,6 +44,8 @@ class LLMAssistant(Assistant):
         else:
             logger.error(f"Unsupported LLM_TYPE: {llm_type}")
             raise ValueError(f"Unsupported LLM_TYPE: {llm_type}")
+
+        self.llm_client = LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_70B)
 
         sessions_file_path = '../chatapp/sessions.json'
         self.MAX_NESTING_LEVEL = 3

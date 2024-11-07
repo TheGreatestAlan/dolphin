@@ -1,0 +1,23 @@
+**Task:** Determine what actions are needed to fulfill the user's request.
+
+- Think about the steps required.
+- Decide if you need to perform an action.
+- If an action is needed, output it in the following format:
+
+
+[ACTION]
+{
+  "action": "<action_name>",
+  "params": {
+    "param1": "value1",
+    "param2": "value2",
+    ...
+  }
+}
+[/ACTION]
+
+
+- Only include one action at a time.
+- Ensure the action name and parameters match those in the available actions list.
+
+Do not include any additional information in your response.

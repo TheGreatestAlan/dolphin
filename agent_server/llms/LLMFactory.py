@@ -12,6 +12,10 @@ from agent_server.llms.OllamaRestLLM import OllamaLLM
 class ModelType(Enum):
     CHATGPT4 = auto()
     FIREWORKS_LLAMA_3_1_8B = auto()
+    FIREWORKS_LLAMA_3_1_405B = auto()
+    FIREWORKS_LLAMA_3_70B = auto()
+    FIREWORKS_LLAMA_3_2_11B = auto()
+    FIREWORKS_LLAMA_3_2_3B = auto()
     OLLAMA_QWEN = auto()
 
 
@@ -27,6 +31,23 @@ class LLMFactory:
         elif model_type == ModelType.FIREWORKS_LLAMA_3_1_8B:
             api_key = key_store.get_api_key("FIREWORKS_API_KEY")
             return FireworksAiRestLLM(api_token=api_key)
+
+        elif model_type == ModelType.FIREWORKS_LLAMA_3_1_405B:
+            api_key = key_store.get_api_key("FIREWORKS_API_KEY")
+            return FireworksAiRestLLM(api_token=api_key, model='accounts/fireworks/models/llama-v3p1-405b-instruct')
+
+        elif model_type == ModelType.FIREWORKS_LLAMA_3_2_3B:
+            api_key = key_store.get_api_key("FIREWORKS_API_KEY")
+            return FireworksAiRestLLM(api_token=api_key, model='accounts/fireworks/models/llama-v3p2-3b-instruct')
+
+        elif model_type == ModelType.FIREWORKS_LLAMA_3_2_11B:
+            api_key = key_store.get_api_key("FIREWORKS_API_KEY")
+            return FireworksAiRestLLM(api_token=api_key, model='accounts/fireworks/models/llama-v3p2-11b-vision-instruct')
+
+        elif model_type == ModelType.FIREWORKS_LLAMA_3_70B:
+            api_key = key_store.get_api_key("FIREWORKS_API_KEY")
+            return FireworksAiRestLLM(api_token=api_key, model='accounts/fireworks/models/llama-v3-70b-instruct-hf')
+
 
         elif model_type == ModelType.OLLAMA_QWEN:
             base_url = "http://localhost:11434"  # Adjust as needed

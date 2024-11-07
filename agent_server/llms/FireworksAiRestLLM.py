@@ -1,5 +1,8 @@
+import json
+
 import requests
 
+from agent_server.llms.EncryptedKeystore import EncryptedKeyStore
 from agent_server.llms.LLMInterface import LLMInterface
 
 
@@ -20,7 +23,7 @@ class FireworksAiRestLLM(LLMInterface):
                 {"role": "system", "content": system_message},
                 {"role": "user", "content": prompt}
             ],
-            "max_tokens": 150,
+            "max_tokens": 500,
             "temperature": 0.7,
             "top_p": 0.9,
             "frequency_penalty": 0,
@@ -35,6 +38,7 @@ class FireworksAiRestLLM(LLMInterface):
         else:
             raise Exception(f"Request failed: {response.status_code}, {response.text}")
 
+
     def stream_response(self, prompt, system_message):
         payload = {
             "model": self.model,
@@ -42,7 +46,7 @@ class FireworksAiRestLLM(LLMInterface):
                 {"role": "system", "content": system_message},
                 {"role": "user", "content": prompt}
             ],
-            "max_tokens": 150,
+            "max_tokens": 500,
             "temperature": 0.7,
             "top_p": 0.9,
             "frequency_penalty": 0,
@@ -58,14 +62,32 @@ class FireworksAiRestLLM(LLMInterface):
                         if data == "data: [DONE]":
                             break
                         else:
-                            yield data
+                            # Parse JSON and yield only the content
+                            json_data = json.loads(data[6:])  # Strip off "data: "
+                            if "choices" in json_data and "delta" in json_data["choices"][0]:
+                                content = json_data["choices"][0]["delta"].get("content")
+                                if content:
+                                    yield content
             else:
                 raise Exception(f"Request failed: {response.status_code}, {response.text}")
 
+
 def main():
-     api_token = "your_fireworks_api_token"
-     model = FireworksAiRestLLM(api_token)
-     print(model.generate_response("What is the weather today?", "You are a helpful assistant."))
+    keystore = EncryptedKeyStore()
+    api_token = keystore.get_api_key("FIREWORKS_API_KEY")
+    model = FireworksAiRestLLM(api_token)
+
+    prompt = "tell me a story about Hasan Piker"
+    system_message = "You are a helpful assistant."
+
+    # Use the stream_response method to get the response in real time
+    try:
+        for response in model.stream_response(prompt, system_message):
+            # Decode the data if necessary and print the response
+            print(response)  # Print each chunk of the response
+    except Exception as e:
+        print(f"Error: {e}")
+
 
 if __name__ == "__main__":
     main()

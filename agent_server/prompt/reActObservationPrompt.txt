@@ -1,0 +1,8 @@
+**Task:** Analyze the result of the action you performed.
+
+- Determine if you have enough information to answer the user's request.
+- If you are confident, include `[FINAL_ANSWER]` in your response.
+- If not, think about what additional actions are needed.
+
+Do not mention the `[FINAL_ANSWER]` token to the user.
+Do not include any action syntax in your response.

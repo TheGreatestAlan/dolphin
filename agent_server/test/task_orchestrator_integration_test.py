@@ -11,8 +11,8 @@ class TestTaskOrchestratorIntegration(unittest.TestCase):
     def setUpClass(cls):
         # Set up the Ollama instance as the LLMInterface implementation
         os.environ["ORGANIZER_SERVER_URL"]= "http://127.0.0.1:8080"
-        os.environ["ENCRYPTION_PASSWORD"] = ''
-        cls.ollama_llm = LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_1_8B)
+        os.environ["ENCRYPTION_PASSWORD"] = 'IisGkkSsKMJ0LaSJrYKdgiiRggtTL5XtvYxkyivYVo0='
+        cls.ollama_llm = LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_2_3B)
         #cls.ollama_llm = OllamaLLM(base_url="http://localhost:11434", model_name="qwen2.5:3b")
 
 

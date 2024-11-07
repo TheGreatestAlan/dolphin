@@ -13,7 +13,7 @@ from agent_server.llms.LLMInterface import LLMInterface
 
 class TaskOrchestrator:
     def __init__(self, llm_interface: LLMInterface):
-        self.sequencer = Sequencer(LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_1_8B))
+        self.sequencer = Sequencer(LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_2_11B))
         self.json_function_creator = JsonFunctionCreator(LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_1_8B))
 
         self.chat_handler = None
