@@ -9,3 +9,5 @@
   "action": "<action_name>",
   "action_prompt": "<natural_language_description>"
 }
+
+- DO NOT USE ACTIONS OUTSIDE OF THE ONES THAT HAVE BEEN PROVIDED

@@ -1,12 +1,19 @@
 **Task:** Decide whether the result of the actions performed provides enough information to answer the user's request.
 
-- Review the action result to see if it contains all the necessary information.
-- **Do not perform any additional reasoning, calculations, or logic.**
-- **Do not attempt to answer the user's request or provide any new information in this step.**
-- If you have enough information to answer the user's request, respond only with `[FINAL_ANSWER]`.
+- Review the action results to see if they contain all the necessary information.
+- **Do not perform any additional reasoning, calculations, or logic beyond constructing the final answer based on the information collected.**
+- **If you have enough information, construct the final answer to the user's request using only the information from the action results and conversation history.**
+- Respond with the following JSON:
 
-Your response should be concise and only indicate whether more actions are needed.
+```json
+{
+  "final_answer": "<Your final answer to the user>"
+}
 
-Do not mention the `[FINAL_ANSWER]` token to the user.
+If you do not have enough information, respond with:
 
-Do not include any action syntax, reasoning, or calculations in your response.
+{
+  "final_answer": null
+}
+
+Do not include any action syntax, reasoning, or calculations outside of constructing the final answer.

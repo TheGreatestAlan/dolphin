@@ -12,12 +12,6 @@ from agent_server.integrations.local_device_action import LocalDeviceAction
 from agent_server.llms.LLMFactory import LLMFactory, ModelType
 from agent_server.llms.LLMInterface import LLMInterface
 
-# HEMMINGWAY BRIDGE
-# You got some of the react steps running, you're at the Observation phase
-# You noticed that it was doing logic in the observation phase.  That's wrong
-# It's job is to look at the steps, actions and responses given, and determine
-# if that's enough information to answer the question.  If it is to package th
-# into the final answer, if not to continue the cycle.
 
 class ReActAgent:
     def __init__(self, llm_interface: LLMInterface):
@@ -45,11 +39,10 @@ class ReActAgent:
         rest_inventory_client = InventoryClient(os.environ.get("ORGANIZER_SERVER_URL"))
         smart_finding_inventory_client = SmartFindingInventoryClient(rest_inventory_client, llm_interface)
         function_generator = InventoryFunctionGenerator(LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_1_8B))
-        knowledge_query = KnowledgeQuery(LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_1_8B))
+        knowledge_query = KnowledgeQuery(LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_1_405B))
         local_device_action = LocalDeviceAction(None)
         self.function_mapper = FunctionMapper(smart_finding_inventory_client, function_generator, self.chat_handler,
                                               knowledge_query, local_device_action)
-
 
     def _load_prompt_from_file(self, file_path: Path) -> str:
         try:
@@ -97,7 +90,9 @@ class ReActAgent:
         prompt = self._format_conversation(prompt_conversation)
 
         # Generate the assistant's thought process
-        assistant_thought = self.llm_interface.generate_response(prompt, system_message)
+        assistant_thought = LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_1_405B).generate_response(prompt,
+                                                                                                        system_message)
+
         return assistant_thought
 
     def _generate_observation(self, conversation: list) -> str:
@@ -111,7 +106,7 @@ class ReActAgent:
         prompt = self._format_conversation(prompt_conversation)
 
         # Generate the assistant's observation
-        assistant_observation = self.llm_interface.generate_response(prompt, system_message)
+        assistant_observation = LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_1_405B).generate_response(prompt, system_message)
         return assistant_observation
 
     def _needs_action(self, assistant_response: str) -> bool:
@@ -173,9 +168,15 @@ class ReActAgent:
         return function_response
 
     def _is_confident(self, assistant_observation: str) -> bool:
-        # Evaluate if the agent is confident enough to provide the final answer
-        # For example, check if the observation contains a specific keyword
-        return "[FINAL_ANSWER]" in assistant_observation
+        try:
+            # Parse the assistant's observation as JSON
+            observation_data = json.loads(assistant_observation)
+            final_answer = observation_data.get("final_answer")
+            # Check if 'final_answer' is not None (i.e., not null)
+            return final_answer is not None
+        except json.JSONDecodeError:
+            # If parsing fails, assume not confident
+            return False
 
     def _generate_final_response(self, conversation: list) -> str:
         # Exclude the main system prompt
@@ -204,37 +205,27 @@ class ReActAgent:
             conversation.append({'role': 'assistant', 'content': assistant_thought})
 
             # Determine if an action is needed
-            if self._needs_action(assistant_thought):
-                # Extract the action and parameters
-                action, params = self._extract_action(assistant_thought)
+            # Extract the action and parameters
+            action, params = self._extract_action(assistant_thought)
 
-                # Step 2: Action Execution
-                action_result = self._perform_action(action, params)
-                conversation.append({'role': 'action_result', 'content': action_result})
+            # Step 2: Action Execution
+            action_result = self._perform_action(action, params)
+            conversation.append({'role': 'action_result', 'content': action_result})
 
-                # Step 3: Observation
-                assistant_observation = self._generate_observation(conversation)
-                conversation.append({'role': 'assistant', 'content': assistant_observation})
+            # Step 3: Observation
+            assistant_observation = self._generate_observation(conversation)
+            conversation.append({'role': 'assistant', 'content': assistant_observation})
+
+            # Step 4: Decide to Repeat or Conclude
+            if self._is_confident(assistant_observation):
+                print("BREAKING")
                 break
-                #
-                # # Step 4: Decide to Repeat or Conclude
-                # if self._is_confident(assistant_observation):
-                #     # Step 5: Generate Final Response
-                #     final_response = self._generate_final_response(conversation)
-                #     conversation.append({'role': 'assistant', 'content': final_response})
-                #     return final_response
-                # else:
-                #     # Loop back to planning with updated conversation
-                #     continue
-            else:
-                # No action needed; provide the final answer
-                final_response = assistant_thought
-                return final_response
+
 
 def main():
-        reactAgent = ReActAgent(LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_70B))
-        reactAgent.process_request("what is twice barrack obama's age?")
+    reactAgent = ReActAgent(LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_70B))
+    reactAgent.process_request("what's in container 5?")
+
 
 if __name__ == "__main__":
     main()
-
