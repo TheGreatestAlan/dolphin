@@ -17,6 +17,8 @@ class FireworksAiRestLLM(LLMInterface):
         }
 
     def generate_response(self, prompt, system_message):
+        print('SYSTEM_MESSAGE:::\n' +  system_message)
+        print('PROMPT_MESSAGE:::\n' +  prompt)
         payload = {
             "model": self.model,
             "messages": [
@@ -34,7 +36,9 @@ class FireworksAiRestLLM(LLMInterface):
         response = requests.post(self.url, json=payload, headers=self.headers)
         if response.status_code == 200:
             data = response.json()
-            return data["choices"][0]["message"]["content"]
+            res = data["choices"][0]["message"]["content"]
+            print(res)
+            return res
         else:
             raise Exception(f"Request failed: {response.status_code}, {response.text}")
 

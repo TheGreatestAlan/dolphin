@@ -1,15 +1,16 @@
-Function: find_location
-Description: Finds the location of a specified item by its name.
+Function: knowledge_query
+Description: queries a knowledge source for a piece of knowledge specified by a question
 
 Parameters:
-- item_name (string): The name of the item to locate.
+- query (string): the question to ask the knowledge source
 
 Example:
-User Query: "find the location of item named screwdriver"
+User Query: "What is the main street in Denver?"
 Response:
-{
-  "action": "find_location",
-  "parameters": {
-    "item_name": "screwdriver"
-  }
-}
+    {
+      "action": "knowledge_query",
+      "parameters": {
+        "query": "What is the main street in Denver?"
+      }
+    }
+

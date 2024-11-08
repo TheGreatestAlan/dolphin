@@ -1,8 +1,12 @@
-**Task:** Analyze the result of the action you performed.
+**Task:** Decide whether the result of the actions performed provides enough information to answer the user's request.
 
-- Determine if you have enough information to answer the user's request.
-- If you are confident, include `[FINAL_ANSWER]` in your response.
-- If not, think about what additional actions are needed.
+- Review the action result to see if it contains all the necessary information.
+- **Do not perform any additional reasoning, calculations, or logic.**
+- **Do not attempt to answer the user's request or provide any new information in this step.**
+- If you have enough information to answer the user's request, respond only with `[FINAL_ANSWER]`.
+
+Your response should be concise and only indicate whether more actions are needed.
 
 Do not mention the `[FINAL_ANSWER]` token to the user.
-Do not include any action syntax in your response.
+
+Do not include any action syntax, reasoning, or calculations in your response.

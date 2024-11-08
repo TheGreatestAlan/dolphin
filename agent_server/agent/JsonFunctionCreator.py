@@ -18,7 +18,8 @@ def build_system_message(function_definition: str) -> str:
     return (
             "You are responsible for interpreting user requests and generating a JSON response based on "
             "the provided action and parameters.\n\n" + function_definition +
-            "Please generate JSON responses for queries related to retrieving container contents according to this format."
+            "Please generate JSON responses for queries related to retrieving container contents according to this format. "
+            "YOU WILL RESPOND WITH ONLY JSON AND NOTHING MORE"
     )
 
 

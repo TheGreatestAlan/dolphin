@@ -1,20 +1,28 @@
 import json
+import os
 from pathlib import Path
 
+from agent_server.FunctionMapper import FunctionMapper
+from agent_server.InventoryFunctionGenerator import InventoryFunctionGenerator
+from agent_server.agent.JsonFunctionCreator import JsonFunctionCreator
+from agent_server.integrations.InventoryRestClient import InventoryClient
+from agent_server.integrations.KnowledgeQuery import KnowledgeQuery
+from agent_server.integrations.SmartFindingInventoryClient import SmartFindingInventoryClient
+from agent_server.integrations.local_device_action import LocalDeviceAction
+from agent_server.llms.LLMFactory import LLMFactory, ModelType
 from agent_server.llms.LLMInterface import LLMInterface
 
 # HEMMINGWAY BRIDGE
-# You've got some bones on a react agent, you're building it through and this remains
-# untested.  You for sure need to handle the action creation step correctly, the
-# way you're doing it in the sequencer.
-
-# probably take this one at a time, pick a question, "Give me a list of all the
-# locations for cooking supplies I need for pho." And just run that through
-# one step at a time, observing the input and outputs of each step.
+# You got some of the react steps running, you're at the Observation phase
+# You noticed that it was doing logic in the observation phase.  That's wrong
+# It's job is to look at the steps, actions and responses given, and determine
+# if that's enough information to answer the question.  If it is to package th
+# into the final answer, if not to continue the cycle.
 
 class ReActAgent:
     def __init__(self, llm_interface: LLMInterface):
         self.llm_interface = llm_interface
+        self.json_function_creator = JsonFunctionCreator(llm_interface)
 
         # Resolve paths to prompt files
         script_dir = Path(__file__).resolve().parent
@@ -32,6 +40,16 @@ class ReActAgent:
 
         # Load available actions
         self.available_actions = self._load_actions_from_functions_json(functions_json_path)
+
+        self.chat_handler = None
+        rest_inventory_client = InventoryClient(os.environ.get("ORGANIZER_SERVER_URL"))
+        smart_finding_inventory_client = SmartFindingInventoryClient(rest_inventory_client, llm_interface)
+        function_generator = InventoryFunctionGenerator(LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_1_8B))
+        knowledge_query = KnowledgeQuery(LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_1_8B))
+        local_device_action = LocalDeviceAction(None)
+        self.function_mapper = FunctionMapper(smart_finding_inventory_client, function_generator, self.chat_handler,
+                                              knowledge_query, local_device_action)
+
 
     def _load_prompt_from_file(self, file_path: Path) -> str:
         try:
@@ -97,25 +115,62 @@ class ReActAgent:
         return assistant_observation
 
     def _needs_action(self, assistant_response: str) -> bool:
-        return "[ACTION]" in assistant_response and "[/ACTION]" in assistant_response
+        import re
+        try:
+            # Attempt to extract JSON from code block if present
+            code_block_pattern = r"```json\s*(\{.*?\})\s*```"
+            match = re.search(code_block_pattern, assistant_response, re.DOTALL)
+            if match:
+                # Extract JSON content from the code block
+                action_json = match.group(1)
+            else:
+                # No code block found; assume the entire response is JSON
+                action_json = assistant_response.strip()
+            # Attempt to parse the JSON content
+            action_data = json.loads(action_json)
+            # Check if 'action' key is present
+            return 'action' in action_data
+        except json.JSONDecodeError:
+            # If JSON decoding fails, no action is needed
+            return False
+        except Exception:
+            # For any other exceptions, assume no action is needed
+            return False
 
     def _extract_action(self, assistant_response: str) -> tuple:
+        import re
         try:
-            action_start = assistant_response.index("[ACTION]") + len("[ACTION]")
-            action_end = assistant_response.index("[/ACTION]")
-            action_json = assistant_response[action_start:action_end].strip()
+            # Attempt to extract JSON from a code block if present
+            code_block_pattern = r"```json\s*(\{.*?\})\s*```"
+            match = re.search(code_block_pattern, assistant_response, re.DOTALL)
+            if match:
+                # Extract JSON content from the code block
+                action_json = match.group(1)
+            else:
+                # No code block found; assume the entire response is JSON
+                action_json = assistant_response.strip()
+
+            # Attempt to parse the JSON content
             action_data = json.loads(action_json)
             action_name = action_data.get("action")
-            params = action_data.get("params", {})
+            action_prompt = action_data.get("action_prompt", "")
+
+            # Use JsonFunctionCreator to generate the action parameters
+            params = self.json_function_creator.create_json(action_name, action_prompt)
+
             return action_name, params
-        except (ValueError, json.JSONDecodeError):
-            raise ValueError("Failed to extract action from assistant's response.")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"JSON decoding error: {e}")
+        except Exception as e:
+            raise ValueError(f"Failed to extract action from assistant's response: {e}")
 
     def _perform_action(self, action: str, params: dict) -> str:
         # Execute the action and return the result
-        # Placeholder implementation; replace with your actual action execution logic
-        result = f"Result of {action} with parameters {params}"
-        return result
+        function_response = self.function_mapper.handle_function_call(params, None)
+
+        print(f"Result of {action} with parameters {params}: " + json.dumps(function_response))
+
+        return function_response
 
     def _is_confident(self, assistant_observation: str) -> bool:
         # Evaluate if the agent is confident enough to provide the final answer
@@ -160,17 +215,26 @@ class ReActAgent:
                 # Step 3: Observation
                 assistant_observation = self._generate_observation(conversation)
                 conversation.append({'role': 'assistant', 'content': assistant_observation})
-
-                # Step 4: Decide to Repeat or Conclude
-                if self._is_confident(assistant_observation):
-                    # Step 5: Generate Final Response
-                    final_response = self._generate_final_response(conversation)
-                    conversation.append({'role': 'assistant', 'content': final_response})
-                    return final_response
-                else:
-                    # Loop back to planning with updated conversation
-                    continue
+                break
+                #
+                # # Step 4: Decide to Repeat or Conclude
+                # if self._is_confident(assistant_observation):
+                #     # Step 5: Generate Final Response
+                #     final_response = self._generate_final_response(conversation)
+                #     conversation.append({'role': 'assistant', 'content': final_response})
+                #     return final_response
+                # else:
+                #     # Loop back to planning with updated conversation
+                #     continue
             else:
                 # No action needed; provide the final answer
                 final_response = assistant_thought
                 return final_response
+
+def main():
+        reactAgent = ReActAgent(LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_70B))
+        reactAgent.process_request("what is twice barrack obama's age?")
+
+if __name__ == "__main__":
+    main()
+
