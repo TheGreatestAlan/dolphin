@@ -2,21 +2,31 @@ import json
 import os
 from pathlib import Path
 
-from agent_server.FunctionMapper import FunctionMapper
-from agent_server.InventoryFunctionGenerator import InventoryFunctionGenerator
+from agent_server.function.FunctionMapper import FunctionMapper
+from agent_server.agent.JsonFormatEnforcer import JsonFormatEnforcer
 from agent_server.agent.JsonFunctionCreator import JsonFunctionCreator
-from agent_server.integrations.InventoryRestClient import InventoryClient
-from agent_server.integrations.KnowledgeQuery import KnowledgeQuery
-from agent_server.integrations.SmartFindingInventoryClient import SmartFindingInventoryClient
-from agent_server.integrations.local_device_action import LocalDeviceAction
 from agent_server.llms.LLMFactory import LLMFactory, ModelType
-from agent_server.llms.LLMInterface import LLMInterface
+
+# Hemmingway Bridge
+# K you're going to need to change the function list that you're loading in the
+# plan step.  It's loading the full function descriptions, a huge waste of tokens
+# instead you'll probably want a way to pull the function names and descriptions
+# from an enum or something
+#
+# You're going to also need to rework functionmapper so it works, you were in the middle
+# of a refactor on that
+
+# YOUR FIRST TASK IS TO SEPARATE OUT THE JSON EXTRACTION AND CALL IT BASICALLY WHEREVER IT'S NEEDED
+# WHICH IS EVERYWHERE
+
+class ReactException(Exception):
+    """Custom exception for errors in the ReActAgent steps."""
+    pass
 
 
 class ReActAgent:
-    def __init__(self, llm_interface: LLMInterface):
-        self.llm_interface = llm_interface
-        self.json_function_creator = JsonFunctionCreator(llm_interface)
+    def __init__(self):
+        self.json_function_creator = JsonFunctionCreator(LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_8B))
 
         # Resolve paths to prompt files
         script_dir = Path(__file__).resolve().parent
@@ -31,18 +41,13 @@ class ReActAgent:
         # Load the step-specific prompts
         self.planning_prompt = self._load_prompt_from_file(planning_prompt_path)
         self.observation_prompt = self._load_prompt_from_file(observation_prompt_path)
+        self.json_format_enforcer = JsonFormatEnforcer(LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_8B))
 
         # Load available actions
         self.available_actions = self._load_actions_from_functions_json(functions_json_path)
 
         self.chat_handler = None
-        rest_inventory_client = InventoryClient(os.environ.get("ORGANIZER_SERVER_URL"))
-        smart_finding_inventory_client = SmartFindingInventoryClient(rest_inventory_client, llm_interface)
-        function_generator = InventoryFunctionGenerator(LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_1_8B))
-        knowledge_query = KnowledgeQuery(LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_1_405B))
-        local_device_action = LocalDeviceAction(None)
-        self.function_mapper = FunctionMapper(smart_finding_inventory_client, function_generator, self.chat_handler,
-                                              knowledge_query, local_device_action)
+        self.function_mapper = FunctionMapper()
 
     def _load_prompt_from_file(self, file_path: Path) -> str:
         try:
@@ -90,24 +95,28 @@ class ReActAgent:
         prompt = self._format_conversation(prompt_conversation)
 
         # Generate the assistant's thought process
-        assistant_thought = LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_1_405B).generate_response(prompt,
+        assistant_thought = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).generate_response(prompt,
                                                                                                         system_message)
 
         return assistant_thought
 
-    def _generate_observation(self, conversation: list) -> str:
-        # Exclude the main system prompt
+    def _generate_observation(self, conversation: list) -> bool:
+        # Prepare conversation content for observation check
         prompt_conversation = conversation[1:]  # Exclude the main system prompt
-
-        # Concatenate the general prompt and the observation prompt
-        system_message = self.general_prompt + "\n" + self.observation_prompt
-
-        # Format the conversation for the LLM
+        system_message = self.observation_prompt
         prompt = self._format_conversation(prompt_conversation)
 
-        # Generate the assistant's observation
-        assistant_observation = LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_1_405B).generate_response(prompt, system_message)
-        return assistant_observation
+        # Generate the observation response and parse JSON for `is_answered`
+        observation_response = LLMFactory.get_singleton(ModelType.OPTILLM).generate_response(prompt, system_message)
+
+        try:
+            # Parse observation JSON to check if enough information has been gathered
+            observation_data = json.loads(observation_response)
+            is_answered = observation_data.get("is_answered", False)
+        except json.JSONDecodeError:
+            is_answered = False  # Default to False if parsing fails
+
+        return is_answered
 
     def _needs_action(self, assistant_response: str) -> bool:
         import re
@@ -128,9 +137,8 @@ class ReActAgent:
         except json.JSONDecodeError:
             # If JSON decoding fails, no action is needed
             return False
-        except Exception:
-            # For any other exceptions, assume no action is needed
-            return False
+        except Exception as e:
+            raise ReactException(f"Error in _generate_observation: {e}")
 
     def _extract_action(self, assistant_response: str) -> tuple:
         import re
@@ -146,18 +154,32 @@ class ReActAgent:
                 action_json = assistant_response.strip()
 
             # Attempt to parse the JSON content
-            action_data = json.loads(action_json)
+            try:
+                action_data = json.loads(action_json)
+            except json.JSONDecodeError:
+                try:
+                    expected_format = '''
+{
+  "action": "<action_name>",
+  "action_prompt": "<natural_language_description>"
+}'''
+                    action_data = json.loads(self.json_format_enforcer.create_json(expected_format, action_json))
+                except json.JSONDecodeError:
+                    raise ReactException(f"Error in _extract_action: ")
+
             action_name = action_data.get("action")
             action_prompt = action_data.get("action_prompt", "")
 
-            # Use JsonFunctionCreator to generate the action parameters
-            params = self.json_function_creator.create_json(action_name, action_prompt)
+            if action_name.lower() == "no_action":
+                params = None
+            else:
+                params = self.json_function_creator.create_json(action_name, action_prompt)
 
             return action_name, params
         except json.JSONDecodeError as e:
             raise ValueError(f"JSON decoding error: {e}")
         except Exception as e:
-            raise ValueError(f"Failed to extract action from assistant's response: {e}")
+            raise ReactException(f"Error in _extract_action: {e}")
 
     def _perform_action(self, action: str, params: dict) -> str:
         # Execute the action and return the result
@@ -178,53 +200,99 @@ class ReActAgent:
             # If parsing fails, assume not confident
             return False
 
+    def _generate_observation(self, conversation: list) -> bool:
+         # Use a simplified observation prompt to determine completeness
+         prompt_conversation = conversation[1:]
+         system_message = self.observation_prompt
+         prompt = self._format_conversation(prompt_conversation)
+
+         assistant_observation = LLMFactory.get_singleton(ModelType.OPTILLM).generate_response(prompt, system_message)
+         observation_data = json.loads(assistant_observation)
+
+         # Check if the final answer is present
+         return observation_data.get("final_answer") is not None
+
     def _generate_final_response(self, conversation: list) -> str:
-        # Exclude the main system prompt
-        prompt_conversation = conversation[1:]  # Exclude the main system prompt
+        # System prompt for the final response step
+        final_response_system_prompt = (
+            "You have gathered sufficient information to answer the user's request. "
+            "Using only the collected action results and conversation history, "
+            "synthesize a final response that directly addresses the user's question. "
+            "Do not include any additional reasoning or assumptions."
+        )
 
-        # Use only the general prompt for the final response
-        system_message = self.general_prompt
+        # Exclude initial system prompt to focus on action results and conversation history
+        prompt_conversation = conversation[1:]  # Skip the initial general prompt
+        formatted_conversation = self._format_conversation(prompt_conversation)
 
-        # Format the conversation for the LLM
-        prompt = self._format_conversation(prompt_conversation)
+        # Combine the system prompt with the formatted conversation
+        system_message = f"{self.final_response_prompt}\n{final_response_system_prompt}"
 
-        # Generate the final response
-        final_response = self.llm_interface.generate_response(prompt, system_message)
+        # Generate the final response from the assistant
+        final_response = LLMFactory.get_singleton(ModelType.OPTILLM).generate_response(formatted_conversation, system_message)
+
         return final_response
 
     def process_request(self, user_input: str) -> str:
-        # Initialize the conversation with the general system prompt and user input
+        # Process request with new observe and finalize response steps
         conversation = [
             {'role': 'system', 'content': self.general_prompt},
             {'role': 'user', 'content': user_input}
         ]
 
         while True:
-            # Step 1: Planning
             assistant_thought = self._generate_thought(conversation)
-            conversation.append({'role': 'assistant', 'content': assistant_thought})
+            conversation.append({'role': 'assistant-plan', 'content': assistant_thought})
 
-            # Determine if an action is needed
-            # Extract the action and parameters
             action, params = self._extract_action(assistant_thought)
-
-            # Step 2: Action Execution
             action_result = self._perform_action(action, params)
             conversation.append({'role': 'action_result', 'content': action_result})
 
-            # Step 3: Observation
-            assistant_observation = self._generate_observation(conversation)
-            conversation.append({'role': 'assistant', 'content': assistant_observation})
-
-            # Step 4: Decide to Repeat or Conclude
-            if self._is_confident(assistant_observation):
-                print("BREAKING")
+            if self._generate_observation(conversation):
+                final_answer = self._generate_final_response(conversation)
+                print(final_answer)
                 break
 
 
+    def process_request(self, user_input: str) -> str:
+        max_retries = 5
+        retry_count = 0
+        # Initialize the conversation with the general system prompt and user input
+        conversation = [
+            {'role': 'system', 'content': self.general_prompt},
+            {'role': 'user', 'content': user_input}
+        ]
+        while True:
+            try:
+                assistant_thought = self._generate_thought(conversation)
+                conversation.append({'role': 'assistant-plan', 'content': assistant_thought})
+
+                action, params = self._extract_action(assistant_thought)
+
+                if action.lower() != 'no_action':
+                    action_result = self._perform_action(action, params)
+                    conversation.append({'role': 'action_result', 'content': action_result})
+
+                if self._generate_observation(conversation):
+                    final_answer = self._generate_final_response(conversation)
+                    print(final_answer)
+                    break
+
+            except ReactException as e:
+                print(f"ReactException caught: {e}")
+                retry_count += 1
+                if retry_count >= max_retries:
+                    print("Maximum retries exceeded. Exiting.")
+                    break
+                else:
+                    print(f"Retrying... ({retry_count}/{max_retries})")
+                    # Optionally adjust the conversation or state before retrying
+                    continue
+
 def main():
-    reactAgent = ReActAgent(LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_70B))
-    reactAgent.process_request("what's in container 5?")
+    reactAgent = ReActAgent()
+    reactAgent.process_request(
+        "What would jack black most likely want out of my inventory? Give me specific items from my inventory")
 
 
 if __name__ == "__main__":

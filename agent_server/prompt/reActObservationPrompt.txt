@@ -1,19 +1,8 @@
-**Task:** Decide whether the result of the actions performed provides enough information to answer the user's request.
+Task: Evaluate whether the action results collected so far contain enough information to answer the user’s request.
 
-- Review the action results to see if they contain all the necessary information.
-- **Do not perform any additional reasoning, calculations, or logic beyond constructing the final answer based on the information collected.**
-- **If you have enough information, construct the final answer to the user's request using only the information from the action results and conversation history.**
-- Respond with the following JSON:
-
-```json
+Review the action results and determine if they contain all necessary information.
+Do not synthesize the final answer yet. Only assess completeness.
+Respond in JSON format as follows:
 {
-  "final_answer": "<Your final answer to the user>"
+  "is_answered": true or false,  // true if you have enough information to answer, false if more actions are needed
 }
-
-If you do not have enough information, respond with:
-
-{
-  "final_answer": null
-}
-
-Do not include any action syntax, reasoning, or calculations outside of constructing the final answer.

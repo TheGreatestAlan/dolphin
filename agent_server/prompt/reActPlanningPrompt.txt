@@ -3,11 +3,17 @@
 - Think about the steps required.
 - Decide if you need to perform an action.
 - If an action is needed, output it in the following JSON format:
-
 ```json
 {
   "action": "<action_name>",
   "action_prompt": "<natural_language_description>"
 }
-
+```
+- If you feel there is no action to be taken, use a no_action action like so:
+```json
+{
+  "action": "no_action",
+  "action_prompt": "<description of why there is no action needed and how the question is answered>"
+}
+```
 - DO NOT USE ACTIONS OUTSIDE OF THE ONES THAT HAVE BEEN PROVIDED

@@ -14,18 +14,12 @@ from agent_server.integrations.local_device_action import LocalDeviceAction
 from agent_server.llms.LLMFactory import LLMFactory, ModelType
 from llms.RestLLM import RestLLM
 from llms.ChatGPT4 import ChatGPT4
-from FunctionMapper import FunctionMapper
+from agent_server.function.FunctionMapper import FunctionMapper
 from agent_server.integrations.ChatHandler import ChatHandler
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-
-# HEMMINGWAY BRIDGE
-# looks like the process isn't following up correctly on reading the response from the llm
-# and prompting it back.  Follow the logic through by asking it for the time, put in break
-# points and follow the response.
 
 class LLMAssistant(Assistant):
     def __init__(self, chat_handler: ChatHandler, stream_manager: StreamManager):

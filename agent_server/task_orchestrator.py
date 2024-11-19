@@ -1,6 +1,6 @@
 import os
 
-from agent_server.FunctionMapper import FunctionMapper
+from agent_server.function.FunctionMapper import FunctionMapper
 from agent_server.InventoryFunctionGenerator import InventoryFunctionGenerator
 from agent_server.agent.Sequencer import Sequencer
 from agent_server.agent.JsonFunctionCreator import JsonFunctionCreator
