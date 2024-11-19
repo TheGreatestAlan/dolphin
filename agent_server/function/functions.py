@@ -4,13 +4,13 @@ import os
 from agent_server.function.decorators import register_function
 from agent_server.function.function_definitions import generate_json_definitions
 from agent_server.integrations.ChatHandler import ChatHandler
-from agent_server.integrations.Inventory import Inventory
 from agent_server.integrations.InventoryRestClient import InventoryClient
 from agent_server.integrations.KnowledgeQuery import KnowledgeQuery
 from agent_server.integrations.SmartFindingInventoryClient import SmartFindingInventoryClient
 from agent_server.integrations.local_device_action import LocalDeviceAction
 from agent_server.FunctionResponse import FunctionResponse, Status
 from agent_server.llms.LLMFactory import LLMFactory, ModelType
+
 
 # Assuming you have the necessary imports and initializations for dependencies
 # such as inventory, chat_handler, knowledge_query_service, local_device_action

@@ -36,7 +36,6 @@ class ReActAgent:
         general_prompt_path = (script_dir / '../prompt/ReActGeneralPrompt.txt').resolve()
         planning_prompt_path = (script_dir / '../prompt/ReActPlanningPrompt.txt').resolve()
         observation_prompt_path = (script_dir / '../prompt/ReActObservationPrompt.txt').resolve()
-        functions_json_path = (script_dir / '../prompt/functionList.json').resolve()
 
         # Load the general system prompt
         self.general_prompt = self._load_prompt_from_file(general_prompt_path)
@@ -278,7 +277,7 @@ class ReActAgent:
 def main():
     reactAgent = ReActAgent()
     reactAgent.process_request(
-        "Do I have everything I need to make jambalaya?  If not tell me what I need."
+        "tell me a story about the rock"
     )
 
 

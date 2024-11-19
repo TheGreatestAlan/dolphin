@@ -1,5 +1,7 @@
 import json
 from pathlib import Path
+
+from agent_server.agent.UnknownFunctionError import UnknownFunctionError
 from agent_server.function.FunctionName import FunctionName
 from agent_server.llms.LLMInterface import LLMInterface
 
@@ -31,7 +33,7 @@ class JsonFunctionCreator:
         """Generates JSON for a specified function based on a user request."""
         # Check if the function_name is valid by matching it against the Enum
         if not FunctionName.has_value(function_name):
-            raise ValueError(f"Unknown function name: {function_name}")
+            raise UnknownFunctionError(f"Unknown function name: {function_name}")
 
         # Retrieve the corresponding FunctionName Enum and load the system message
         function_enum = FunctionName[function_name.upper()]
