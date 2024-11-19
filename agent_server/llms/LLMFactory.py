@@ -2,7 +2,7 @@ import os
 from enum import Enum, auto
 from typing import Dict
 
-from agent_server.llms.EncryptedKeystore import EncryptedKeyStore
+from agent_server.llms.EncryptedKeyStore import EncryptedKeyStore
 from agent_server.llms.FireworksAiRestLLM import FireworksAiRestLLM
 from agent_server.llms.LLMInterface import LLMInterface
 from agent_server.llms.ChatGPT4 import ChatGPT4

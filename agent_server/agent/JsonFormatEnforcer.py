@@ -5,11 +5,11 @@ from agent_server.llms.LLMInterface import LLMInterface
 def build_system_message(json_definition: str) -> str:
     """Constructs a system message using the provided function definition."""
     return (
-        "You are an intelligent English to JSON interpretter responsible for taking the output of an LLM and enforcing "
-        "the text into expected JSON"
+        "You are an intelligent English to JSON interpreter responsible for taking the output of an LLM and enforcing "
+        "the text into expected JSON. "
         "\nPlease take the incorrect input and put it into the expected JSON response:\n" +
         json_definition + "\n"
-        "RESPOSND ONLY WITH JSON"
+        "RESPOND ONLY WITH JSON"
     )
 
 
