@@ -1,0 +1,141 @@
+{
+  "available_actions": [
+    {
+      "action": "create_items",
+      "parameters": {
+        "container": "string",
+        "items": ["string"]
+      },
+      "example": {
+        "query": "add a hammer to container 5",
+        "response": {
+          "action": "create_items",
+          "parameters": {
+            "container": "5",
+            "items": ["hammer"]
+          }
+        }
+      }
+    },
+    {
+      "action": "delete_items",
+      "parameters": {
+        "container": "string",
+        "items": ["string"]
+      },
+      "example": [
+        {
+          "query": "remove a screwdriver from container 10",
+          "response": {
+            "action": "delete_items",
+            "parameters": {
+              "container": "10",
+              "items": ["screwdriver"]
+            }
+          }
+        },
+        {
+          "query": "Oops I messed up, delete the phone from container 6",
+          "response": {
+            "action": "delete_items",
+            "parameters": {
+              "container": "6",
+              "items": ["phone"]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "action": "get_inventory",
+      "parameters": {},
+      "example": {
+        "query": "retrieve the entire inventory",
+        "response": {
+          "action": "get_inventory",
+          "parameters": {}
+        }
+      }
+    },
+    {
+      "action": "find_location",
+      "parameters": {
+        "item_name": "string"
+      },
+      "example": {
+        "query": "find the location of item named screwdriver",
+        "response": {
+          "action": "find_location",
+          "parameters": {
+            "item_name": "screwdriver"
+          }
+        }
+      }
+    },
+    {
+      "action": "get_container",
+      "parameters": {
+        "container_id": "string"
+      },
+      "example": {
+        "query": "What's in container 5?",
+        "response": {
+          "action": "get_container",
+          "parameters": {
+            "container_id": "5"
+          }
+        }
+      }
+    },
+    {
+      "action": "create_items",
+      "parameters": {
+        "container": "string",
+        "items": ["string"]
+      },
+      "example": {
+        "query": "In container 7 add a screwdriver, gorilla glue, nerf balls, and a fan",
+        "response": {
+          "action": "create_items",
+          "parameters": {
+            "container": "7",
+            "items": ["screwdriver", "gorilla glue", "nerf balls", "fan"]
+          }
+        }
+      }
+    },
+    {
+      "action": "knowledge_query",
+      "parameters": {
+        "query": "string"
+      },
+      "example": {
+        "query": "What is the main street in Denver?",
+        "response": {
+          "action": "knowledge_query",
+          "parameters": {
+            "response": "One of the main streets in the city of Denver is Broadway."
+          }
+        }
+      }
+    },
+    {
+      "action": "event_alert_action",
+      "parameters": {
+        "event_name": "string",
+        "message": "string"
+      },
+      "example": {
+        "query": "Hey when I get home can you remind me to put in the laundry?",
+        "response": {
+          "action": "event_alert_action",
+          "parameters": {
+            "event_name": "arrivedHomeEvent",
+            "message": "put in laundry"
+          }
+        }
+      },
+      "valid_event_names": ["arrivedHomeEvent"]
+    }
+  ]
+}
