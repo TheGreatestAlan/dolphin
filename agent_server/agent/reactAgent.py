@@ -10,18 +10,6 @@ from agent_server.agent.JsonFunctionCreator import JsonFunctionCreator
 from agent_server.function.function_definitions import generate_json_definitions
 from agent_server.llms.LLMFactory import LLMFactory, ModelType
 
-# Hemingway Bridge
-# K you're going to need to change the function list that you're loading in the
-# plan step.  It's loading the full function descriptions, a huge waste of tokens
-# instead you'll probably want a way to pull the function names and descriptions
-# from an enum or something
-#
-# You're going to also need to rework functionmapper so it works, you were in the middle
-# of a refactor on that
-
-# YOUR FIRST TASK IS TO SEPARATE OUT THE JSON EXTRACTION AND CALL IT BASICALLY WHEREVER IT'S NEEDED
-# WHICH IS EVERYWHERE
-
 class ReactException(Exception):
     """Custom exception for errors in the ReActAgent steps."""
     pass
@@ -50,6 +38,9 @@ class ReActAgent:
 
         self.chat_handler = None
         self.function_mapper = FunctionMapper()
+
+        self.plan_llm = LLMFactory.get_singleton(ModelType.FIREWORKS_QWEN_72B)
+        self.observation_llm = LLMFactory.get_singleton(ModelType.FIREWORKS_QWEN_72B)
 
     def _generate_available_actions(self) -> str:
         # Get the function definitions
@@ -125,28 +116,30 @@ class ReActAgent:
         prompt = self._format_conversation(prompt_conversation)
 
         # Generate the assistant's thought process
-        assistant_thought = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).generate_response(prompt,
-                                                                                                        system_message)
+        assistant_thought = self.plan_llm.generate_response(prompt, system_message)
 
         return assistant_thought
 
-    def _generate_observation(self, conversation: list) -> bool:
+    def _generate_observation(self, conversation: list, user_request) -> bool:
         # Prepare conversation content for observation check
         prompt_conversation = conversation[1:]  # Exclude the main system prompt
+        formatted_user_request = '***USER REQUEST***'+ user_request + '***USER REQUEST***'
         system_message = self.observation_prompt
         prompt = self._format_conversation(prompt_conversation)
+        prompt = prompt + formatted_user_request
 
         # Generate the observation response and parse JSON for `is_answered`
-        observation_response = LLMFactory.get_singleton(ModelType.OPTILLM).generate_response(prompt, system_message)
+        observation_response = self.observation_llm.generate_response(prompt, system_message)
 
         expected_format = '''
         {
           "is_answered": true or false,  // true if you have enough information to answer, false if more actions are needed
+          "answer": "this is the answer",  // optional, if is_answered is true
         }
         '''
 
         observation_data = self._validate_and_parse_json(observation_response, expected_format)
-        return observation_data.get("is_answered", False)
+        return observation_data
 
     def _needs_action(self, assistant_response: str) -> bool:
         try:
@@ -256,10 +249,12 @@ class ReActAgent:
                     action_result = self._perform_action(action, params)
                     conversation.append({'role': 'action_result', 'content': action_result})
 
-                if self._generate_observation(conversation):
+                observation = self._generate_observation(conversation, user_input)
+                conversation.append({'role': 'assistant-observation', 'content':observation})
+
+                if observation.get("is_answered"):
                     print(self._format_conversation(conversation))
-                    final_answer = self._generate_final_response(conversation)
-                    print(final_answer)
+                    print(observation.get("answer"))
                     break
 
             except ReactException as e:
@@ -277,7 +272,7 @@ class ReActAgent:
 def main():
     reactAgent = ReActAgent()
     reactAgent.process_request(
-        "tell me a story about the rock"
+        "where is my guitalele?"
     )
 
 

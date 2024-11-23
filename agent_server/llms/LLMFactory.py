@@ -18,8 +18,11 @@ class ModelType(Enum):
     FIREWORKS_LLAMA_3_70B = auto()
     FIREWORKS_LLAMA_3_2_11B = auto()
     FIREWORKS_LLAMA_3_2_3B = auto()
+    FIREWORKS_QWEN_CODER_32B= auto()
+    FIREWORKS_QWEN_72B= auto()
     OLLAMA_QWEN = auto()
     OPTILLM = auto()
+    OPTILLM_LLAMA3p18B = auto()
 
 
 class LLMFactory:
@@ -54,6 +57,15 @@ class LLMFactory:
             api_key = key_store.get_api_key("FIREWORKS_API_KEY")
             return FireworksAiRestLLM(api_token=api_key, model='accounts/fireworks/models/llama-v3-70b-instruct-hf')
 
+        elif model_type == ModelType.FIREWORKS_QWEN_CODER_32B:
+            api_key = key_store.get_api_key("FIREWORKS_API_KEY")
+            return FireworksAiRestLLM(api_token=api_key, model='accounts/fireworks/models/qwen2p5-coder-32b-instruct')
+
+        elif model_type == ModelType.FIREWORKS_QWEN_72B:
+            api_key = key_store.get_api_key("FIREWORKS_API_KEY")
+            return FireworksAiRestLLM(api_token=api_key, model='accounts/fireworks/models/qwen2p5-72b-instruct')
+
+
         elif model_type == ModelType.OLLAMA_QWEN:
             base_url = "http://localhost:11434"  # Adjust as needed
             model_name = "qwen2.5:3b"  # Adjust as needed
@@ -61,7 +73,12 @@ class LLMFactory:
             return OllamaLLM(base_url=base_url, model_name=model_name, api_key=api_key)
 
         elif model_type == ModelType.OPTILLM:
-            return OptiLLM()
+            return OptiLLM("fireworks_ai/accounts/fireworks/models/qwen2p5-72b-instruct")
+
+        elif model_type == ModelType.OPTILLM_LLAMA3p18B:
+            return OptiLLM("fireworks_ai/accounts/fireworks/models/llama-v3p1-8b-instruct")
+
+
 
         else:
             raise ValueError(f"Unsupported model type: {model_type}")

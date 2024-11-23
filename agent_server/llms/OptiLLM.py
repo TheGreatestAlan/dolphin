@@ -1,8 +1,8 @@
-import json
-import requests
 from openai import OpenAI
 
 from agent_server.llms.LLMInterface import LLMInterface
+from agent_server.llms.MethodNotSupportedException import MethodNotSupportedException
+
 
 class OptiLLM(LLMInterface):
     def __init__(self, model="fireworks_ai/accounts/fireworks/models/qwen2p5-72b-instruct"):
@@ -24,37 +24,10 @@ class OptiLLM(LLMInterface):
         return assistant_message
 
     def stream_response(self, prompt, system_message):
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": prompt}
-            ],
-            "max_tokens": 500,
-            "temperature": 0.7,
-            "top_p": 0.9,
-            "frequency_penalty": 0,
-            "presence_penalty": 0,
-            "stream": True
-        }
-
-        with requests.post(self.url, json=payload, headers=self.headers, stream=True) as response:
-            if response.status_code == 200:
-                for line in response.iter_lines():
-                    if line:
-                        data = line.decode("utf-8")
-                        if data == "data: [DONE]":
-                            break
-                        else:
-                            # Parse JSON and yield only the content
-                            json_data = json.loads(data[6:])  # Strip off "data: "
-                            if "choices" in json_data and "delta" in json_data["choices"][0]:
-                                content = json_data["choices"][0]["delta"].get("content")
-                                if content:
-                                    yield content
-            else:
-                raise Exception(f"Request failed: {response.status_code}, {response.text}")
-
+        raise MethodNotSupportedException(
+            "stream",
+            "Streaming responses are not supported for OptiLLM due to the multi-inference nature of this implementation."
+        )
 
 def main():
     model = OptiLLM()
@@ -67,7 +40,6 @@ def main():
         print(response)  # Print the assistant's response
     except Exception as e:
         print(f"Error: {e}")
-
 
 if __name__ == "__main__":
     main()

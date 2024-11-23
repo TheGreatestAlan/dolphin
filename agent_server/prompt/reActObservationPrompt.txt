@@ -1,8 +1,16 @@
 Task: Evaluate whether the action results collected so far contain enough information to answer the user’s request.
 
-Review the action results and determine if they contain all necessary information.
-Do not synthesize the final answer yet. Only assess completeness.
+Review the prompt conversation and determine if they contain all necessary information to the user request.
+If they do not, respond with the following json
 Respond in JSON format as follows:
 {
-  "is_answered": true or false,  // true if you have enough information to answer, false if more actions are needed
+  "is_answered": false
 }
+
+if they do, review the results collected and synthesize an answer to the user questions:
+{
+  "is_answered": true,
+  "answer":"the results of the answer here"
+}
+
+In the answer, give a concise and complete answer to the user request as it will be returned to the user and the only thing the user sees.
