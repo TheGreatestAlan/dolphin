@@ -58,7 +58,7 @@ class ChatGPT4(LLMInterface):
                 if 'data: ' in decoded_line:
                     data = decoded_line[len('data: '):]
                     if data.strip() == "[DONE]":
-                        yield "[DONE]"  # Yield the end marker before breaking
+                        yield self.END_STREAM  # Yield the end marker before breaking
                         break  # Terminate the stream processing after yielding [DONE]
                     if data:
                         message = json.loads(data)['choices'][0]['delta']

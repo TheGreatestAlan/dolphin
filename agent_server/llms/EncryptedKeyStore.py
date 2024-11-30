@@ -4,7 +4,7 @@ from cryptography.fernet import Fernet
 
 
 class EncryptedKeyStore:
-    def __init__(self, encrypted_file_name="key.json.enc"):
+    def __init__(self, encrypted_file_name="keys.json.enc"):
         script_dir = os.path.dirname(os.path.abspath(__file__))
         self.encrypted_file_path = os.path.join(script_dir, "../dev", encrypted_file_name)
 

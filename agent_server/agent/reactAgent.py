@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 import re
 
+from agent_server.agent.ReasoningAgent import ReasoningAgent
 from agent_server.agent.UnknownFunctionError import UnknownFunctionError
 from agent_server.function import functions
 from agent_server.function.FunctionMapper import FunctionMapper
@@ -10,12 +11,23 @@ from agent_server.agent.JsonFunctionCreator import JsonFunctionCreator
 from agent_server.function.function_definitions import generate_json_definitions
 from agent_server.llms.LLMFactory import LLMFactory, ModelType
 
+# HEMMINGWAY BRIDGE
+# Ok, so you've got a pretty good react agent running.  I guess you could design a way to test
+# in an automated way different answers to the different models that you can configure the agent
+# to use.
+
+# For now though, I think this is your next task.  You need to have a chat agent that talks to
+# the user, passes the user requests to the react agent.  You need to consider how a conversation
+# will be translated to user requests that the react agent will see.  Do they get the whole conversation?
+# maybe the chat client will give the react agent a set of context as well.  Either way, it probably
+# needs to be a separate agent and llm, that will eventually be pulled in by the rest_orchestrator.
+# That chat agent will need the ability to stream, so maybe get the fireworks ai streaming working.
 class ReactException(Exception):
     """Custom exception for errors in the ReActAgent steps."""
     pass
 
 
-class ReActAgent:
+class ReActReasoningAgent(ReasoningAgent):
     def __init__(self):
         self.json_function_creator = JsonFunctionCreator(LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_8B))
 
@@ -39,8 +51,8 @@ class ReActAgent:
         self.chat_handler = None
         self.function_mapper = FunctionMapper()
 
-        self.plan_llm = LLMFactory.get_singleton(ModelType.FIREWORKS_QWEN_72B)
-        self.observation_llm = LLMFactory.get_singleton(ModelType.FIREWORKS_QWEN_72B)
+        self.plan_llm = LLMFactory.get_singleton(ModelType.OPTILLM)
+        self.observation_llm = LLMFactory.get_singleton(ModelType.OPTILLM)
 
     def _generate_available_actions(self) -> str:
         # Get the function definitions
@@ -250,29 +262,23 @@ class ReActAgent:
                     conversation.append({'role': 'action_result', 'content': action_result})
 
                 observation = self._generate_observation(conversation, user_input)
-                conversation.append({'role': 'assistant-observation', 'content':observation})
+                conversation.append({'role': 'assistant-observation', 'content': observation})
 
                 if observation.get("is_answered"):
-                    print(self._format_conversation(conversation))
-                    print(observation.get("answer"))
-                    break
+                    return observation.get("answer")
 
             except ReactException as e:
-                print(f"ReactException caught: {e}")
-                conversation.append({'role': 'exception', 'content': e})
+                conversation.append({'role': 'exception', 'content': str(e)})
                 retry_count += 1
                 if retry_count >= max_retries:
-                    print("Maximum retries exceeded. Exiting.")
-                    break
+                    return "An error occurred: Maximum retries exceeded. Exiting."
                 else:
-                    print(f"Retrying... ({retry_count}/{max_retries})")
-                    # Optionally adjust the conversation or state before retrying
                     continue
 
 def main():
-    reactAgent = ReActAgent()
+    reactAgent = ReActReasoningAgent()
     reactAgent.process_request(
-        "where is my guitalele?"
+        "From my inventory, explain who I am as a person"
     )
 
 

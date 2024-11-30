@@ -64,6 +64,7 @@ class FireworksAiRestLLM(LLMInterface):
                     if line:
                         data = line.decode("utf-8")
                         if data == "data: [DONE]":
+                            yield self.END_STREAM
                             break
                         else:
                             # Parse JSON and yield only the content
@@ -75,6 +76,7 @@ class FireworksAiRestLLM(LLMInterface):
             else:
                 raise Exception(f"Request failed: {response.status_code}, {response.text}")
 
+import sys
 
 def main():
     keystore = EncryptedKeyStore()
@@ -86,11 +88,14 @@ def main():
 
     # Use the stream_response method to get the response in real time
     try:
-        for response in model.stream_response(prompt, system_message):
-            # Decode the data if necessary and print the response
-            print(response)  # Print each chunk of the response
+        print("Streaming response:", end=" ", flush=True)
+        for response_chunk in model.stream_response(prompt, system_message):
+            # Print each chunk without a newline, ChatGPT style
+            sys.stdout.write(response_chunk + " ")
+            sys.stdout.flush()
+        print("\n")  # Ensure a newline at the end of the response
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"\nError: {e}")
 
 
 if __name__ == "__main__":
