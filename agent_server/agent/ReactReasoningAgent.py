@@ -11,17 +11,6 @@ from agent_server.agent.JsonFunctionCreator import JsonFunctionCreator
 from agent_server.function.function_definitions import generate_json_definitions
 from agent_server.llms.LLMFactory import LLMFactory, ModelType
 
-# HEMMINGWAY BRIDGE
-# Ok, so you've got a pretty good react agent running.  I guess you could design a way to test
-# in an automated way different answers to the different models that you can configure the agent
-# to use.
-
-# For now though, I think this is your next task.  You need to have a chat agent that talks to
-# the user, passes the user requests to the react agent.  You need to consider how a conversation
-# will be translated to user requests that the react agent will see.  Do they get the whole conversation?
-# maybe the chat client will give the react agent a set of context as well.  Either way, it probably
-# needs to be a separate agent and llm, that will eventually be pulled in by the rest_orchestrator.
-# That chat agent will need the ability to stream, so maybe get the fireworks ai streaming working.
 class ReactException(Exception):
     """Custom exception for errors in the ReActAgent steps."""
     pass
@@ -51,8 +40,87 @@ class ReActReasoningAgent(ReasoningAgent):
         self.chat_handler = None
         self.function_mapper = FunctionMapper()
 
-        self.plan_llm = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_70B)
-        self.observation_llm = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_70B)
+        self.plan_llm = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B)
+        self.observation_llm = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B)
+
+    def process_request(self, user_input: str) -> str:
+        max_retries = 5
+        retry_count = 0
+
+        # Initialize the chain of reasoning with the system prompt and user input
+        chain_of_reasoning = [
+            {'step': 'system', 'content': self.general_prompt},
+            {'step': 'user_request', 'content': user_input}
+        ]
+
+        while True:
+            try:
+                # Step 1: Generate the assistant's reasoning (thought process)
+                assistant_thought = self._generate_thought(chain_of_reasoning)
+                chain_of_reasoning.append({'step': 'assistant_plan', 'content': assistant_thought})
+
+                # Step 2: Extract and perform action, if necessary
+                action, params = self._extract_action(assistant_thought)
+                if action.lower() != 'no_action':
+                    action_result = self._perform_action(action, params)
+                    chain_of_reasoning.append({'step': 'action_result', 'content': action_result})
+
+                # Step 3: Generate observation based on updated reasoning
+                observation = self._generate_observation(chain_of_reasoning, user_input)
+                chain_of_reasoning.append({'step': 'assistant_observation', 'content': observation})
+
+                # Step 4: Check if the observation contains a final answer
+                if observation.get("is_answered"):
+                    return observation.get("answer")
+
+            except ReactException as e:
+                chain_of_reasoning.append({'step': 'error', 'content': str(e)})
+                retry_count += 1
+                if retry_count >= max_retries:
+                    return "An error occurred: Maximum retries exceeded. Exiting."
+                else:
+                    continue
+
+    def _format_chain_of_reasoning(self, chain: list) -> str:
+        """Formats the chain of reasoning for LLM inputs."""
+        formatted_chain = ""
+        for idx, entry in enumerate(chain, 1):
+            step = entry['step']
+            content = entry['content']
+            formatted_chain += f"{'-' * 50}\nStep {idx} - {step.upper()}:\n{content}\n"
+        formatted_chain += '-' * 50  # Add a separator at the end
+        return formatted_chain
+
+    def _generate_thought(self, user_conversation: list, chain_of_reasoning: list) -> str:
+        # Combine user conversation and reasoning chain into a single formatted context
+        formatted_chain = self._format_chain_of_reasoning(chain_of_reasoning)
+        system_message = f"{self.general_prompt}\n{self.planning_prompt}\n{self.available_actions}"
+
+        # Combine conversation and chain of reasoning
+        input_prompt = f"{user_conversation}\n{formatted_chain}"
+
+        # Generate the assistant's thought
+        assistant_thought = self.plan_llm.generate_response(input_prompt, system_message)
+        return assistant_thought
+
+    def _generate_observation(self, user_conversation: list, chain_of_reasoning: list) -> dict:
+        # Format user conversation and reasoning chain
+        formatted_chain = self._format_chain_of_reasoning(chain_of_reasoning)
+        system_message = self.observation_prompt
+
+        # Combine formatted inputs
+        input_prompt = f"{user_conversation}\n{formatted_chain}"
+
+        # Generate observation response and parse it
+        observation_response = self.observation_llm.generate_response(input_prompt, system_message)
+        expected_format = '''
+        {
+          "is_answered": true or false,
+          "answer": "optional answer if is_answered is true"
+        }
+        '''
+        observation_data = self._validate_and_parse_json(observation_response, expected_format)
+        return observation_data
 
     def _generate_available_actions(self) -> str:
         # Get the function definitions
@@ -117,41 +185,7 @@ class ReActReasoningAgent(ReasoningAgent):
             formatted_conversation += f"{role.capitalize()}: {content}\n"
         return formatted_conversation.strip()
 
-    def _generate_thought(self, conversation: list) -> str:
-        # Exclude the main system prompt
-        prompt_conversation = conversation[1:]  # Exclude the main system prompt
 
-        # Concatenate the general prompt and the planning prompt
-        system_message = self.general_prompt + "\n" + self.planning_prompt + "\n" + self.available_actions
-
-        # Format the conversation for the LLM
-        prompt = self._format_conversation(prompt_conversation)
-
-        # Generate the assistant's thought process
-        assistant_thought = self.plan_llm.generate_response(prompt, system_message)
-
-        return assistant_thought
-
-    def _generate_observation(self, conversation: list, user_request) -> bool:
-        # Prepare conversation content for observation check
-        prompt_conversation = conversation[1:]  # Exclude the main system prompt
-        formatted_user_request = '***USER REQUEST***'+ user_request + '***USER REQUEST***'
-        system_message = self.observation_prompt
-        prompt = self._format_conversation(prompt_conversation)
-        prompt = prompt + formatted_user_request
-
-        # Generate the observation response and parse JSON for `is_answered`
-        observation_response = self.observation_llm.generate_response(prompt, system_message)
-
-        expected_format = '''
-        {
-          "is_answered": true or false,  // true if you have enough information to answer, false if more actions are needed
-          "answer": "this is the answer",  // optional, if is_answered is true
-        }
-        '''
-
-        observation_data = self._validate_and_parse_json(observation_response, expected_format)
-        return observation_data
 
     def _needs_action(self, assistant_response: str) -> bool:
         try:
@@ -233,42 +267,39 @@ class ReActReasoningAgent(ReasoningAgent):
 
         return final_response
 
-    def _format_conversation(self, conversation: list) -> str:
-        formatted_conversation = ""
-        for idx, msg in enumerate(conversation, 1):
-            role = msg['role']
-            content = msg['content']
-            formatted_conversation += f"{'-' * 50}\nMessage {idx} - {role.upper()}:\n{content}\n"
-        formatted_conversation += '-' * 50  # Add a separator at the end
-        return formatted_conversation
-
-    def process_request(self, user_input: str) -> str:
+    def process_request(self, user_conversation: list) -> str:
+        """
+        Process a user conversation by reasoning step-by-step.
+        :param user_conversation: List of dicts containing the full user-assistant dialogue.
+        :return: Final assistant response or error message.
+        """
+        # Initialize the chain of reasoning
+        chain_of_reasoning = [{'step': 'system', 'content': self.general_prompt}]
         max_retries = 5
         retry_count = 0
-        # Initialize the conversation with the general system prompt and user input
-        conversation = [
-            {'role': 'system', 'content': self.general_prompt},
-            {'role': 'user', 'content': user_input}
-        ]
+
         while True:
             try:
-                assistant_thought = self._generate_thought(conversation)
-                conversation.append({'role': 'assistant-plan', 'content': assistant_thought})
+                # Step 1: Generate assistant thought
+                assistant_thought = self._generate_thought(user_conversation, chain_of_reasoning)
+                chain_of_reasoning.append({'step': 'assistant_plan', 'content': assistant_thought})
 
+                # Step 2: Extract and perform action (if any)
                 action, params = self._extract_action(assistant_thought)
-
                 if action.lower() != 'no_action':
                     action_result = self._perform_action(action, params)
-                    conversation.append({'role': 'action_result', 'content': action_result})
+                    chain_of_reasoning.append({'step': 'action_result', 'content': action_result})
 
-                observation = self._generate_observation(conversation, user_input)
-                conversation.append({'role': 'assistant-observation', 'content': observation})
+                # Step 3: Generate observation based on updated reasoning
+                observation = self._generate_observation(user_conversation, chain_of_reasoning)
+                chain_of_reasoning.append({'step': 'assistant_observation', 'content': observation})
 
+                # Step 4: Check if the observation contains a final answer
                 if observation.get("is_answered"):
                     return observation.get("answer")
 
             except ReactException as e:
-                conversation.append({'role': 'exception', 'content': str(e)})
+                chain_of_reasoning.append({'step': 'error', 'content': str(e)})
                 retry_count += 1
                 if retry_count >= max_retries:
                     return "An error occurred: Maximum retries exceeded. Exiting."

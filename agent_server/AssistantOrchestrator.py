@@ -26,6 +26,7 @@ class AssistantOrchestrator(Assistant):
             # Store the user message in the chat history
             logger.debug(f"Storing user message in chat history for username '{username}'.")
             self.chat_handler.store_human_context(username, user_message)
+            context = self.chat_handler.get_context(username)
 
             message_id = str(uuid.uuid4())
             logger.debug(f"Generated message ID for acknowledgment: {message_id}")
@@ -40,7 +41,7 @@ class AssistantOrchestrator(Assistant):
 
             # Pass the request to the ReasoningAgent (synchronously)
             logger.debug(f"Passing user message to ReasoningAgent for processing.")
-            reasoning_result = self.reasoning_agent.process_request(user_message)
+            reasoning_result = self.reasoning_agent.process_request(context)
             logger.info(f"ReasoningAgent returned result for session {session_id}: {reasoning_result}")
 
             # Generate the final response to the user, filtered through the PersonalityAgent

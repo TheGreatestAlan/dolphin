@@ -128,10 +128,10 @@ class ChatHandler:
         else:
             print("Ignored empty human message.")
 
-    def get_context(self, session_id):
+    def get_context(self, username):
         """Retrieve the message context for a given session."""
-        if session_id in self.memories:
-            context = self.memories[session_id].load_memory_variables({})
+        if username in self.memories:
+            context = self.memories[username].load_memory_variables({})
             return context.get("history", "")
         return ""
 
