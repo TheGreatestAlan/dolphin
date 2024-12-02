@@ -18,7 +18,6 @@ from agent_server.llms.LLMFactory import LLMFactory, ModelType
 # Initialize dependencies (These should be initialized appropriately in your actual code)
 rest_inventory_client = InventoryClient(os.environ.get("ORGANIZER_SERVER_URL"))
 inventory = SmartFindingInventoryClient(rest_inventory_client, LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_2_11B))
-chat_handler = ChatHandler()
 knowledge_query_service = KnowledgeQuery(LLMFactory.create_llm(ModelType.FIREWORKS_LLAMA_3_1_405B))
 local_device_action = LocalDeviceAction(None)
 
@@ -138,25 +137,6 @@ def delete_items(container, items):
     return inventory.delete_items(container, items)
 
 @register_function(
-    name='send_message',
-    parameters={'content': 'string'},
-    description='Send a message in a chat session.',
-    examples=[
-        {
-            'query': 'Tell me a joke.',
-            'response': {
-                'action': 'send_message',
-                'parameters': {
-                    'content': 'Tell me a joke.'
-                }
-            }
-        }
-    ]
-)
-def send_message(content, session_id):
-    return chat_handler.send_message(session_id, content)
-
-@register_function(
     name='list_actions',
     parameters={},
     description='List all available actions.',
@@ -174,23 +154,6 @@ def list_actions():
     return FunctionResponse(Status.SUCCESS, generate_json_definitions())
 
 @register_function(
-    name='poll_response',
-    parameters={},
-    description='Poll for a response in a chat session.',
-    examples=[
-        {
-            'query': 'Check if there is a new message.',
-            'response': {
-                'action': 'poll_response',
-                'parameters': {}
-            }
-        }
-    ]
-)
-def poll_response(session_id):
-    return chat_handler.poll_response(session_id)
-
-@register_function(
     name='start_session',
     parameters={},
     description='Start a new chat session.',
@@ -200,42 +163,6 @@ def poll_response(session_id):
             'response': {
                 'action': 'start_session',
                 'parameters': {}
-            }
-        }
-    ]
-)
-def start_session():
-    return chat_handler.get_or_create_user()
-
-@register_function(
-    name='end_session',
-    parameters={},
-    description='End the current chat session.',
-    examples=[
-        {
-            'query': 'End the session.',
-            'response': {
-                'action': 'end_session',
-                'parameters': {}
-            }
-        }
-    ]
-)
-def end_session(session_id):
-    return chat_handler.end_session(session_id)
-
-@register_function(
-    name='knowledge_query',
-    parameters={'query': 'string'},
-    description='Perform a knowledge query.',
-    examples=[
-        {
-            'query': 'What is the main street in Denver?',
-            'response': {
-                'action': 'knowledge_query',
-                'parameters': {
-                    'query': 'What is the main street in Denver?'
-                }
             }
         }
     ]

@@ -5,39 +5,47 @@ from langchain.memory import ConversationBufferMemory
 from langchain_core.messages import HumanMessage, AIMessage
 
 from agent_server.FunctionResponse import FunctionResponse, Status
+from agent_server.integrations.StreamManager import StreamManager
+from agent_server.llms.LLMInterface import LLMInterface
+
 
 class ChatHandler:
-    def __init__(self, sessions_file_path='sessions.json'):
+    def __init__(self,stream_manager: StreamManager, sessions_file_path='sessions.json'):
         self.users = {}
         self.sessions_file_path = sessions_file_path
         self.result_cache = {}
         self.memories = {}  # Dictionary to hold ConversationBufferMemory instances
         self.temp_buffers = {}  # Dictionary to hold temporary buffers for messages by session_id
         self.load_sessions_from_file()
+        self.stream_manager = stream_manager
 
     def save_sessions_to_file(self):
         try:
-            # Save sessions and their corresponding memory states
             sessions_data = {
                 "sessions": self.users,
-                "memories": {session_id: self.serialize_memory(memory) for session_id, memory in self.memories.items()}
+                "memories": {session_id: self.serialize_memory(memory) for session_id, memory in
+                             self.memories.items()}
             }
+            # Ensure the directory exists
+            os.makedirs(os.path.dirname(self.sessions_file_path), exist_ok=True)
             with open(self.sessions_file_path, 'w') as file:
                 json.dump(sessions_data, file)
-            print("Sessions successfully saved to file.")
+            print(f"Sessions successfully saved to file at {self.sessions_file_path}.")
         except IOError as err:
             print(f"Error saving sessions to file: {err}")
 
     def load_sessions_from_file(self):
         try:
             if not os.path.exists(self.sessions_file_path):
+                # File doesn't exist, initialize and create it
+                print(f"File {self.sessions_file_path} not found. Creating a new one.")
                 self.users = {}
                 self.save_sessions_to_file()
+                return
 
             with open(self.sessions_file_path, 'r') as file:
                 sessions_data = json.load(file)
                 self.users = sessions_data.get("sessions", {})
-                # Load memory states for each session
                 self.memories = {
                     session_id: self.deserialize_memory(memory_data)
                     for session_id, memory_data in sessions_data.get("memories", {}).items()
@@ -45,7 +53,6 @@ class ChatHandler:
             print("Sessions successfully loaded from file.")
         except (IOError, json.JSONDecodeError) as err:
             print(f"Error loading sessions from file: {err}")
-            self.users = {}  # Reset or initialize if loading fails
 
     def cache_result(self, session_id, content):
         if session_id not in self.result_cache:
@@ -69,6 +76,33 @@ class ChatHandler:
             return FunctionResponse(Status.SUCCESS, "completed")
         else:
             print("Ignored empty message.")
+
+    def parse_llm_stream(self, username, session_id, data_chunk, message_id):
+        """Parse incoming LLM stream data and immediately send it back without waiting for END_STREAM."""
+        if username not in self.temp_buffers:
+            self.temp_buffers[username] = {}
+
+        if message_id not in self.temp_buffers[username]:
+            self.temp_buffers[username][message_id] = ""
+
+        # Accumulate data chunk
+        self.temp_buffers[username][message_id] += data_chunk
+
+        self.stream_manager.add_to_text_buffer(session_id, data_chunk)
+        # Check for END_STREAM token
+        if self.temp_buffers[username][message_id].strip().endswith(LLMInterface.END_STREAM):
+            complete_message = self.temp_buffers[username][message_id].replace(LLMInterface.END_STREAM, "").strip()
+            self.temp_buffers[username].pop(message_id)  # Clear the temp buffer for this message
+
+            # Finalize the message
+            self.finalize_message(username, complete_message, "AI")
+
+            # If no more messages remain for this session, clear the session from temp_buffers
+            if not self.temp_buffers[username]:
+                self.temp_buffers.pop(username)
+        else:
+            # Send the chunk to the user
+            self.send_message(username, data_chunk)
 
 
     def finalize_message(self, username, message, role):

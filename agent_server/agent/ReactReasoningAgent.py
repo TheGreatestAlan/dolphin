@@ -51,8 +51,8 @@ class ReActReasoningAgent(ReasoningAgent):
         self.chat_handler = None
         self.function_mapper = FunctionMapper()
 
-        self.plan_llm = LLMFactory.get_singleton(ModelType.OPTILLM)
-        self.observation_llm = LLMFactory.get_singleton(ModelType.OPTILLM)
+        self.plan_llm = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_70B)
+        self.observation_llm = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_70B)
 
     def _generate_available_actions(self) -> str:
         # Get the function definitions

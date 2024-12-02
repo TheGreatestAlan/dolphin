@@ -1,10 +1,9 @@
-# agent_server/agent/PersonalityAgent.py
-
 from abc import ABC, abstractmethod
+from typing import Generator
 
 class PersonalityAgent(ABC):
     @abstractmethod
-    def generate_acknowledgment(self, user_message: str) -> str:
+    def generate_acknowledgment(self, user_message: str) -> Generator[str, None, None]:
         """
         Generates an acknowledgment response to the user's message, filtered through the assistant's personality.
 
@@ -12,12 +11,12 @@ class PersonalityAgent(ABC):
             user_message (str): The user's input message.
 
         Returns:
-            str: The acknowledgment message.
+            Generator[str, None, None]: A stream of acknowledgment messages.
         """
         pass
 
     @abstractmethod
-    def generate_final_response(self, username: str, reasoning_result: str, chat_handler) -> str:
+    def generate_final_response(self, username: str, reasoning_result: str, chat_handler) -> Generator[str, None, None]:
         """
         Generates the final response to the user, incorporating the reasoning result and filtered through the assistant's personality.
 
@@ -27,6 +26,6 @@ class PersonalityAgent(ABC):
             chat_handler: The chat handler for accessing conversation history.
 
         Returns:
-            str: The final response message.
+            Generator[str, None, None]: A stream of final response messages.
         """
         pass

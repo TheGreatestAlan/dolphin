@@ -3,6 +3,10 @@ import os
 import json
 import queue
 from threading import Thread
+
+from agent_server.AssistantOrchestrator import AssistantOrchestrator
+from agent_server.agent.ReactReasoningAgent import ReActReasoningAgent
+from agent_server.agent.SevroPersonalityAgent import SevroPersonalityAgent
 from llm_assistant import LLMAssistant
 from assistant import Assistant
 from integrations.ChatHandler import ChatHandler
@@ -10,67 +14,15 @@ from flask import Flask, request, jsonify, Response
 
 from agent_server.integrations.StreamManager import StreamManager
 
-# HEMMINGWAY BRIDGE:
-# K we've implemented more agentic function, a singular function chooser, and a
-# json parser agent.
-
-# we're at the pieces now ahead of that, we've got a user interaction agent
-# and a sequencer.  You're probably going to want to work these backwards, so get the sequencer up and running first
-# then you can give it a complext question like ... I don't know come up with one.
-# the sequencer can get you direct responses though
-
-# 1. User Interaction Agent (Initial User Request Handler)
-# Primary Focus: Handles the initial interpretation of the user’s intent and manages immediate conversational flow.
-#
-# Responsibilities:
-#
-# Determine Query Type: Conversational: If the query is casual or not actionable (e.g., “What can you do?” or “Tell
-# me a joke”), it responds directly without involving other agents. Actionable: If the query seems to require a task,
-# the Interaction Agent hands it off to the Sequencer. Clarify Ambiguous Requests: If the user’s query is unclear or
-# lacks sufficient detail, it prompts the user for additional information. For instance: User Input: “Add something
-# to the container.” Interaction Agent’s Response: “Could you specify what you’d like to add and to which container?”
-# Provide User Feedback: It acknowledges receipt of a complex request and reassures the user that it’s being
-# processed. This helps manage user expectations, especially if a multi-step process is involved. When It Passes to
-# the Sequencer:
-#
-# If the query is identified as actionable and adequately clear, it hands the query over to the Sequencer for task
-# breakdown. Example:
-#
-# Input: “Can you add a hammer to container 5 and find the location of item X?”
-# Process:
-# Recognizes this as an actionable request (not casual or conversational).
-# Confirms it’s ready to process the task: “Got it! Working on adding the hammer and finding item X.”
-# Hands off to the Sequencer.
-#
-#
-# 2. Sequencer
-# Primary Focus: Parses actionable requests into discrete, ordered tasks, and defines any dependencies.
-#
-# Responsibilities:
-#
-# Break Down Complex Requests: For requests with multiple steps, it isolates each atomic task (e.g., “add hammer to
-# container 5” and “find the location of item X”). Identify Task Dependencies: Determines if tasks are independent (
-# can be executed in parallel) or dependent (one task must follow another). Output Structured Task List: Generates a
-# structured task list, providing each task in the correct order with dependency information for execution
-# management. When It Passes to the FunctionChooser:
-#
-# Once each atomic task is identified and organized, the Sequencer hands each task to the FunctionChooser to map to
-# specific functions. Example:
-#
-# Input from Interaction Agent: “Add a hammer to container 5 and find the location of item X.”
-# Process:
-# Breaks down the query into two tasks:
-# Task 1: “Add hammer to container 5”
-# Task 2: “Find location of item X”
-# Assigns each task an order and determines that they can be executed independently.
-# Passes each task individually to the FunctionChooser.
-
 app = Flask(__name__)
 
 sessions_file_path = '../orchestration/sessions.json'
 stream_manager = StreamManager()
-chat_handler = ChatHandler(sessions_file_path)
-assistant: Assistant = LLMAssistant(chat_handler, stream_manager)
+chat_handler = ChatHandler(stream_manager, sessions_file_path)
+#assistant: Assistant = LLMAssistant(chat_handler, stream_manager)
+reasoning_agent = ReActReasoningAgent()
+personality_agent = SevroPersonalityAgent()
+assistant: Assistant = AssistantOrchestrator(reasoning_agent, personality_agent, chat_handler)
 active_threads = {}
 user_sessions = {}
 

@@ -9,12 +9,13 @@ logger = logging.getLogger(__name__)
 class SevroPersonalityAgent(PersonalityAgent):
     def __init__(self):
         logger.info("Initializing SevroPersonalityAgent...")
-        self.llm = LLMFactory.get_singleton(ModelType.CHATGPT)
+        self.llm = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B)
         # Define the system message to reflect Sevro's personality
         self.system_message = (
             "You are Sevro au Barca from the Red Rising series by Pierce Brown. "
             "You are brash, sarcastic, and have a rough demeanor. "
             "You often use profanity and dark humor but are fiercely loyal to your friends. "
+            "You are however direct and dedicated to completing the tasks efficiently and without misdirection"
             "Respond to the user as Sevro would, keeping in mind his personality and speech patterns."
         )
 
@@ -26,14 +27,11 @@ class SevroPersonalityAgent(PersonalityAgent):
         acknowledgment = self.llm.generate_response(prompt, self.system_message)
         return acknowledgment
 
-    def generate_final_response(self, username: str, reasoning_result: str, chat_handler) -> str:
-        context = chat_handler.get_context(username)
-        conversation_history = '\n'.join(
-            [f"{msg['role']}: {msg['content']}" for msg in context]
-        )
+    def generate_final_response(self, username: str, reasoning_result: str, chat_handler):
         prompt = (
-            f"{conversation_history}\nSevro's Analysis: {reasoning_result}\n"
-            "Respond to the user as Sevro would, incorporating the analysis above."
+            f"MESSSAGE---{reasoning_result}---\n"
+            "Take this message and respond in Sevro's voice with it.  Do not omit any information"
         )
-        final_response = self.llm.generate_response(prompt, self.system_message)
-        return final_response
+        # Use the LLM's streaming interface to get a generator
+        response_stream = self.llm.stream_response(prompt, self.system_message)
+        return response_stream

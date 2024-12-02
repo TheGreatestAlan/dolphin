@@ -38,7 +38,7 @@ class ChatApp():
             }
 
         self.chat_window = scrolledtext.ScrolledText(root, wrap=tk.WORD, state='disabled')
-        self.chat_window.grid(row=0, column=0, columnspan=3, padx=10, pady=10)
+        self.chat_window.grid(row=0, column=0, columnspan=4, padx=10, pady=10)
 
         self.prompt_entry = tk.Entry(root, width=80)
         self.prompt_entry.grid(row=1, column=0, padx=10, pady=10)
@@ -49,6 +49,9 @@ class ChatApp():
 
         self.audio_button = tk.Button(root, text="Start Audio", command=self.listen_to_audio_stream)
         self.audio_button.grid(row=1, column=2, padx=10, pady=10)
+
+        self.new_session_button = tk.Button(root, text="New Session", command=self.start_session)
+        self.new_session_button.grid(row=1, column=3, padx=10, pady=10)
 
         self.message_history = []
         self.current_message = ""
