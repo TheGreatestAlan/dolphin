@@ -57,6 +57,7 @@ class ReActReasoningAgent(ReasoningAgent):
             try:
                 # Step 1: Generate the assistant's reasoning (thought process)
                 assistant_thought = self._generate_thought(chain_of_reasoning)
+                print(assistant_thought)
                 chain_of_reasoning.append({'step': 'assistant_plan', 'content': assistant_thought})
 
                 # Step 2: Extract and perform action, if necessary
@@ -67,10 +68,12 @@ class ReActReasoningAgent(ReasoningAgent):
 
                 # Step 3: Generate observation based on updated reasoning
                 observation = self._generate_observation(chain_of_reasoning, user_input)
+                print(observation)
                 chain_of_reasoning.append({'step': 'assistant_observation', 'content': observation})
 
                 # Step 4: Check if the observation contains a final answer
                 if observation.get("is_answered"):
+                    print(self._format_chain_of_reasoning(chain_of_reasoning));
                     return observation.get("answer")
 
             except ReactException as e:

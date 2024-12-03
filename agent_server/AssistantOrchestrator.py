@@ -26,21 +26,11 @@ class AssistantOrchestrator(Assistant):
             # Store the user message in the chat history
             logger.debug(f"Storing user message in chat history for username '{username}'.")
             self.chat_handler.store_human_context(username, user_message)
-            context = self.chat_handler.get_context(username)
+            context = self.chat_handler.get_current_chat(username)
 
             message_id = str(uuid.uuid4())
             logger.debug(f"Generated message ID for acknowledgment: {message_id}")
 
-            # Generate an acknowledgment response to the user
-            # logger.debug(f"Generating acknowledgment response for user message: {user_message}")
-            # acknowledgment = self.personality_agent.generate_acknowledgment(user_message)
-            # for data_chunk in acknowledgment:
-            #     self.chat_handler.parse_llm_stream(username, session_id, data_chunk, message_id)
-
-            #logger.info(f"Acknowledgment sent for session {session_id}, message ID: {message_id}")
-
-            # Pass the request to the ReasoningAgent (synchronously)
-            logger.debug(f"Passing user message to ReasoningAgent for processing.")
             reasoning_result = self.reasoning_agent.process_request(context)
             logger.info(f"ReasoningAgent returned result for session {session_id}: {reasoning_result}")
 

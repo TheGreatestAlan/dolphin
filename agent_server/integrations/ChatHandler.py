@@ -1,5 +1,6 @@
 import json
 import os
+from datetime import datetime, timedelta
 
 from langchain.memory import ConversationBufferMemory
 from langchain_core.messages import HumanMessage, AIMessage
@@ -30,7 +31,6 @@ class ChatHandler:
             os.makedirs(os.path.dirname(self.sessions_file_path), exist_ok=True)
             with open(self.sessions_file_path, 'w') as file:
                 json.dump(sessions_data, file)
-            print(f"Sessions successfully saved to file at {self.sessions_file_path}.")
         except IOError as err:
             print(f"Error saving sessions to file: {err}")
 
@@ -59,24 +59,6 @@ class ChatHandler:
             self.result_cache[session_id] = ""
         self.result_cache[session_id] += "\n" + content.response
 
-    def send_message(self, session_id, content, role="AI"):
-        if session_id not in self.users:
-            self.users[session_id] = []
-
-        # Retrieve the cached result for the session, if any
-        full_content = content
-        if session_id in self.result_cache:
-            full_content += f"\nResult: {self.result_cache[session_id]}"
-            del self.result_cache[session_id]
-
-        if full_content.strip():
-            self.users[session_id].append({"role": role, "message": full_content})
-            self.save_sessions_to_file()
-            print(f"Sending message to user: {full_content}")
-            return FunctionResponse(Status.SUCCESS, "completed")
-        else:
-            print("Ignored empty message.")
-
     def parse_llm_stream(self, username, session_id, data_chunk, message_id):
         """Parse incoming LLM stream data and immediately send it back without waiting for END_STREAM."""
         if username not in self.temp_buffers:
@@ -100,20 +82,17 @@ class ChatHandler:
             # If no more messages remain for this session, clear the session from temp_buffers
             if not self.temp_buffers[username]:
                 self.temp_buffers.pop(username)
-        else:
-            # Send the chunk to the user
-            self.send_message(username, data_chunk)
-
 
     def finalize_message(self, username, message, role):
         """Finalize the message and update the context."""
         if message:
+            timestamp = datetime.utcnow().isoformat() + 'Z'
             if username in self.memories:
                 if role == "Human":
-                    print("HUMAN:" + message)
+                    print(f"HUMAN ({timestamp}): {message}")
                     self.memories[username].save_context({"input": message}, {"output": ""})
                 elif role == "AI":
-                    print("AI:" + message)
+                    print(f"AI ({timestamp}): {message}")
                     self.memories[username].save_context({"input": ""}, {"output": message})
 
     def store_human_context(self, username, message):
@@ -122,7 +101,8 @@ class ChatHandler:
             self.users[username] = []
 
         if message.strip():
-            self.users[username].append({"role": "Human", "message": message})
+            timestamp = datetime.utcnow().isoformat() + 'Z'
+            self.users[username].append({"role": "Human", "message": message, "timestamp": timestamp})
             self.finalize_message(username, message, "Human")
             self.save_sessions_to_file()
         else:
@@ -134,6 +114,36 @@ class ChatHandler:
             context = self.memories[username].load_memory_variables({})
             return context.get("history", "")
         return ""
+
+    def get_full_session_history(self, username):
+        """Retrieve the entire conversation history for a given user."""
+        return self.users.get(username, [])
+
+    def get_current_chat(self, username):
+        """Retrieve the current chat where there is no time gap of greater than 30 minutes between messages."""
+        session_history = self.users.get(username, [])
+        if not session_history:
+            return []
+
+        current_chat = [session_history[0]]
+        for i in range(1, len(session_history)):
+            prev_message = session_history[i - 1]
+            current_message = session_history[i]
+
+            # Handle missing timestamps gracefully
+            if "timestamp" not in prev_message or "timestamp" not in current_message:
+                continue
+
+            prev_timestamp = datetime.fromisoformat(prev_message["timestamp"].rstrip('Z'))
+            current_timestamp = datetime.fromisoformat(current_message["timestamp"].rstrip('Z'))
+            time_diff = current_timestamp - prev_timestamp
+            if time_diff <= timedelta(minutes=30):
+                current_chat.append(current_message)
+            else:
+                current_chat = [current_message]
+
+        print(current_chat)
+        return current_chat
 
     def get_or_create_user(self, username):
         if username and username in self.users:
