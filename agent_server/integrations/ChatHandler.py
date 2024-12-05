@@ -1,14 +1,99 @@
 import json
 import os
-from datetime import datetime, timedelta
 
+from agent_server.integrations.StreamManager import StreamManager
+
+from typing import Final
+from datetime import datetime, timedelta
 from langchain.memory import ConversationBufferMemory
 from langchain_core.messages import HumanMessage, AIMessage
-
-from agent_server.FunctionResponse import FunctionResponse, Status
-from agent_server.integrations.StreamManager import StreamManager
 from agent_server.llms.LLMInterface import LLMInterface
 
+class ChatSession:
+    def __init__(self, username: Final[str], session_id: Final[str], chat_handler):
+        self._username: Final[str] = username
+        self._session_id: Final[str] = session_id
+        self._chat_handler = chat_handler
+
+    def parse_llm_stream(self, data_chunk, message_id):
+        if self._username not in self._chat_handler.temp_buffers:
+            self._chat_handler.temp_buffers[self._username] = {}
+
+        if message_id not in self._chat_handler.temp_buffers[self._username]:
+            self._chat_handler.temp_buffers[self._username][message_id] = ""
+
+        # Accumulate data chunk
+        self._chat_handler.temp_buffers[self._username][message_id] += data_chunk
+
+        self._chat_handler.stream_manager.add_to_text_buffer(self._session_id, data_chunk)
+        # Check for END_STREAM token
+        if self._chat_handler.temp_buffers[self._username][message_id].strip().endswith(LLMInterface.END_STREAM):
+            complete_message = self._chat_handler.temp_buffers[self._username][message_id].replace(LLMInterface.END_STREAM, "").strip()
+            self._chat_handler.temp_buffers[self._username].pop(message_id)  # Clear the temp buffer for this message
+
+            # Finalize the message
+            self.finalize_message(complete_message, "AI")
+
+            # If no more messages remain for this session, clear the session from temp_buffers
+            if not self._chat_handler.temp_buffers[self._username]:
+                self._chat_handler.temp_buffers.pop(self._username)
+
+    def finalize_message(self, message, role):
+        if message:
+            timestamp = datetime.utcnow().isoformat() + 'Z'
+            if self._username in self._chat_handler.memories:
+                if role == "Human":
+                    print(f"HUMAN ({timestamp}): {message}")
+                    self._chat_handler.memories[self._username].save_context({"input": message}, {"output": ""})
+                elif role == "AI":
+                    print(f"AI ({timestamp}): {message}")
+                    self._chat_handler.memories[self._username].save_context({"input": ""}, {"output": message})
+
+    def store_human_context(self, message):
+        if self._username not in self._chat_handler.users:
+            self._chat_handler.users[self._username] = []
+
+        if message.strip():
+            timestamp = datetime.utcnow().isoformat() + 'Z'
+            self._chat_handler.users[self._username].append({"role": "Human", "message": message, "timestamp": timestamp})
+            self.finalize_message(message, "Human")
+            self._chat_handler.save_sessions_to_file()
+        else:
+            print("Ignored empty human message.")
+
+    def get_context(self):
+        if self._username in self._chat_handler.memories:
+            context = self._chat_handler.memories[self._username].load_memory_variables({})
+            return context.get("history", "")
+        return ""
+
+    def get_full_session_history(self):
+        return self._chat_handler.users.get(self._username, [])
+
+    def get_current_chat(self):
+        session_history = self._chat_handler.users.get(self._username, [])
+        if not session_history:
+            return []
+
+        current_chat = [session_history[0]]
+        for i in range(1, len(session_history)):
+            prev_message = session_history[i - 1]
+            current_message = session_history[i]
+
+            # Handle missing timestamps gracefully
+            if "timestamp" not in prev_message or "timestamp" not in current_message:
+                continue
+
+            prev_timestamp = datetime.fromisoformat(prev_message["timestamp"].rstrip('Z'))
+            current_timestamp = datetime.fromisoformat(current_message["timestamp"].rstrip('Z'))
+            time_diff = current_timestamp - prev_timestamp
+            if time_diff <= timedelta(minutes=30):
+                current_chat.append(current_message)
+            else:
+                current_chat = [current_message]
+
+        print(current_chat)
+        return current_chat
 
 class ChatHandler:
     def __init__(self,stream_manager: StreamManager, sessions_file_path='sessions.json'):
@@ -19,6 +104,10 @@ class ChatHandler:
         self.temp_buffers = {}  # Dictionary to hold temporary buffers for messages by session_id
         self.load_sessions_from_file()
         self.stream_manager = stream_manager
+
+    def create_session(self, username, session_id):
+        self.get_or_create_user(username)
+        return ChatSession(username, session_id, self)
 
     def save_sessions_to_file(self):
         try:

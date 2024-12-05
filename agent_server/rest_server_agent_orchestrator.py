@@ -5,8 +5,8 @@ import queue
 from threading import Thread
 
 from agent_server.AssistantOrchestrator import AssistantOrchestrator
+from agent_server.agent.ChatAgent import ChatAgent
 from agent_server.agent.ReactReasoningAgent import ReActReasoningAgent
-from agent_server.agent.SevroPersonalityAgent import SevroPersonalityAgent
 from llm_assistant import LLMAssistant
 from assistant import Assistant
 from integrations.ChatHandler import ChatHandler
@@ -21,14 +21,14 @@ stream_manager = StreamManager()
 chat_handler = ChatHandler(stream_manager, sessions_file_path)
 #assistant: Assistant = LLMAssistant(chat_handler, stream_manager)
 reasoning_agent = ReActReasoningAgent()
-personality_agent = SevroPersonalityAgent()
-assistant: Assistant = AssistantOrchestrator(reasoning_agent, personality_agent, chat_handler)
+chat_agent = ChatAgent()
+assistant: Assistant = AssistantOrchestrator(reasoning_agent,chat_agent)
 active_threads = {}
 user_sessions = {}
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-HEARTBEAT_INTERVAL = 60  # Heartbeat interval set to 5 seconds
+HEARTBEAT_INTERVAL = 60
 
 # Read BYPASS_LLM flag from the environment
 BYPASS_LLM = os.getenv('BYPASS_LLM', 'false').lower() == 'true'
@@ -142,7 +142,8 @@ def message_agent():
     if handle_bypass_llm(session_id, user_message):
         return jsonify({"status": "Message received, canned response sent"}), 202
     else:
-        assistant.message_assistant(session_id, user_sessions.get(session_id), user_message)
+        chat_session = chat_handler.create_session(user_sessions.get(session_id), session_id)
+        assistant.message_assistant(chat_session, user_message)
         return jsonify({"status": "Message received, processing started"}), 202
 
 
