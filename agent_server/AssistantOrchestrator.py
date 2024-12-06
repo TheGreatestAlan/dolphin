@@ -23,12 +23,12 @@ class AssistantOrchestrator(Assistant):
             chat_session.store_human_context(user_message)
             context = chat_session.get_current_chat()
 
-            final_response_stream = self.chat_agent.process_user_message(context, chat_session)
+            task_json = self.chat_agent.process_user_message(context, chat_session)
+            if task_json == None:
+                return
 
             message_id = str(uuid.uuid4())
-            logger.debug(f"Generated message ID for acknowledgment: {message_id}")
-
-            reasoning_result = self.reasoning_agent.process_request(context)
+            reasoning_result = self.reasoning_agent.process_request(task_json)
 
             # Generate the final response to the user, filtered through the PersonalityAgent
             response_id = str(uuid.uuid4())

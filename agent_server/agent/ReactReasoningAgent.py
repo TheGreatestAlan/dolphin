@@ -94,25 +94,25 @@ class ReActReasoningAgent(ReasoningAgent):
         formatted_chain += '-' * 50  # Add a separator at the end
         return formatted_chain
 
-    def _generate_thought(self, user_conversation: list, chain_of_reasoning: list) -> str:
+    def _generate_thought(self, task_request: str, chain_of_reasoning: list) -> str:
         # Combine user conversation and reasoning chain into a single formatted context
         formatted_chain = self._format_chain_of_reasoning(chain_of_reasoning)
         system_message = f"{self.general_prompt}\n{self.planning_prompt}\n{self.available_actions}"
 
         # Combine conversation and chain of reasoning
-        input_prompt = f"{user_conversation}\n{formatted_chain}"
+        input_prompt = f"TASK----{task_request}---\n{formatted_chain}"
 
         # Generate the assistant's thought
         assistant_thought = self.plan_llm.generate_response(input_prompt, system_message)
         return assistant_thought
 
-    def _generate_observation(self, user_conversation: list, chain_of_reasoning: list) -> dict:
+    def _generate_observation(self, task_request: str, chain_of_reasoning: list) -> dict:
         # Format user conversation and reasoning chain
         formatted_chain = self._format_chain_of_reasoning(chain_of_reasoning)
         system_message = self.observation_prompt
 
         # Combine formatted inputs
-        input_prompt = f"{user_conversation}\n{formatted_chain}"
+        input_prompt = f"TASK---{task_request}---\n{formatted_chain}"
 
         # Generate observation response and parse it
         observation_response = self.observation_llm.generate_response(input_prompt, system_message)
@@ -270,10 +270,10 @@ class ReActReasoningAgent(ReasoningAgent):
 
         return final_response
 
-    def process_request(self, user_conversation: list) -> str:
+    def process_request(self, task_request: str) -> str:
         """
         Process a user conversation by reasoning step-by-step.
-        :param user_conversation: List of dicts containing the full user-assistant dialogue.
+        :param task_request: List of dicts containing the full user-assistant dialogue.
         :return: Final assistant response or error message.
         """
         # Initialize the chain of reasoning
@@ -284,7 +284,7 @@ class ReActReasoningAgent(ReasoningAgent):
         while True:
             try:
                 # Step 1: Generate assistant thought
-                assistant_thought = self._generate_thought(user_conversation, chain_of_reasoning)
+                assistant_thought = self._generate_thought(task_request, chain_of_reasoning)
                 chain_of_reasoning.append({'step': 'assistant_plan', 'content': assistant_thought})
 
                 # Step 2: Extract and perform action (if any)
@@ -294,7 +294,7 @@ class ReActReasoningAgent(ReasoningAgent):
                     chain_of_reasoning.append({'step': 'action_result', 'content': action_result})
 
                 # Step 3: Generate observation based on updated reasoning
-                observation = self._generate_observation(user_conversation, chain_of_reasoning)
+                observation = self._generate_observation(task_request, chain_of_reasoning)
                 chain_of_reasoning.append({'step': 'assistant_observation', 'content': observation})
 
                 # Step 4: Check if the observation contains a final answer
