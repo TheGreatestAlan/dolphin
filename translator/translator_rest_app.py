@@ -22,44 +22,15 @@ def proxy_request(endpoint):
             if data and data.get("model") == "llama3.2:3b":
                 return handle_llama32_3b(data, headers, params)
 
-        # Use stream=True for requests
         response = requests.request(
             method=request.method,
             url=target_url,
             headers=headers,
             json=data if request.is_json else None,
             params=params,
-            stream=(endpoint != "api/tags")  # Stream for all but /api/tags
+            stream = (endpoint != "api/tags")  # Stream for all but /api/tags
+
         )
-
-        # Intercept and modify response for /api/tags
-        if endpoint == "api/tags" and response.status_code == 200:
-            tags = response.json()  # Get existing models
-            if "models" in tags and isinstance(tags["models"], list):
-                # Add the fake Spanish translator model
-                spanish_translator_model = {
-                    "name": "spanish-translator",
-                    "model": "spanish-translator",
-                    "modified_at": "2024-12-08T00:00:00.0000000-06:00",
-                    "size": 123456789,  # Fake size
-                    "digest": "fake-digest-spanish-translator",
-                    "details": {
-                        "parent_model": "",
-                        "format": "gguf",
-                        "family": "custom",
-                        "families": [
-                            "custom"
-                        ],
-                        "parameter_size": "1.0B",
-                        "quantization_level": "Q4_K_M"
-                    }
-                }
-                tags["models"].append(spanish_translator_model)
-            else:
-                app.logger.error("Unexpected response format for /api/tags")
-                return jsonify({"error": "Unexpected response format"}), 500
-
-            return jsonify(tags), 200
 
         # Handle streaming responses for other endpoints
         def generate():
@@ -74,16 +45,36 @@ def proxy_request(endpoint):
         app.logger.error(f"Error proxying request to {target_url}: {e}")
         return jsonify({"error": str(e)}), 500
 
-
 def handle_llama32_3b(data, headers, params):
     """
     Handles requests for the llama3.2:3b model.
-    Reroute or modify the request as needed.
+    Checks if the message is in English and processes accordingly.
+    If the message is in English, streams the Spanish translation back to the user.
     """
-    # Modify the model to reroute to a different model
-    data["model"] = "qwen2.5:3b"  # Example: Redirect to another valid model
+    # Extract the message content
+    messages = data.get("messages", [])
+    if not messages or not isinstance(messages, list):
+        return jsonify({"error": "Invalid message format"}), 400
 
-    # Make a request to the Ollama server
+    user_message = messages[-1].get("content", "").strip()  # Get the last message content
+
+    # Call the LLM to check if the message is in English
+    if user_message == 'translato':
+        return english_translation(messages[-2].get("content","").strip(), True, headers, params)
+    else:
+        is_english = check_if_english(user_message)
+
+    # Log the result of the language check
+    app.logger.debug(f"Message: '{user_message}', Is English: {is_english}")
+
+    if is_english:
+        app.logger.debug("Message is in English. Streaming Spanish translation.")
+        # Stream the Spanish translation
+        return spanish_translation(user_message, data.get("stream"), headers, params)
+
+    app.logger.debug("Message is not in English. Proceeding with original request.")
+
+    # Proceed with the original LLM call
     target_url = f"{OLLAMA_API_BASE_URL}/api/chat"
     try:
         response = requests.request(
@@ -92,7 +83,7 @@ def handle_llama32_3b(data, headers, params):
             headers=headers,
             json=data,
             params=params,
-            stream=True
+            stream=data.get("stream")
         )
 
         # Handle streaming response
@@ -107,6 +98,117 @@ def handle_llama32_3b(data, headers, params):
         app.logger.error(f"Error in handle_llama32_3b: {e}")
         return jsonify({"error": str(e)}), 500
 
+def english_translation(message, stream, headers, params):
+    """
+    Streams the Spanish translation of the given English message in the expected Ollama format.
+    """
+    translation_prompt = {
+        "model": "llama3.2:3b",
+        "messages": [
+            {
+                'role': 'system',
+                'content': f"You are a concise and direct translating Spanish English expert.  You will not be yappy."
+            },
+            {
+            'role':'user',
+            'content':f"Translate the following text to English:\n\n{message}"
+        }
+        ],
+        "stream": stream
+    }
+
+    target_url = f"{OLLAMA_API_BASE_URL}/api/chat"
+    try:
+        response = requests.request(
+            method="POST",
+            url=target_url,
+            headers=headers,
+            json=translation_prompt,
+            params=params,
+        )
+
+        def generate():
+            for chunk in response.iter_content(chunk_size=1024):
+                if chunk:
+                    yield chunk
+
+        if stream:
+            return Response(generate(), status=response.status_code, headers=dict(response.headers))
+        else:
+            return Response(status=response.status_code, headers=dict(response.headers))
+
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"Error during Spanish translation streaming: {e}")
+        return jsonify({"error": str(e)}), 500
+
+def spanish_translation(message, stream, headers, params):
+    """
+    Streams the Spanish translation of the given English message in the expected Ollama format.
+    """
+    translation_prompt = {
+        "model": "llama3.2:3b",
+        "messages": [{
+            'role':'user',
+            'content':f"Translate the following text to Spanish:\n\n{message}"
+        }],
+        "stream": stream
+    }
+
+    target_url = f"{OLLAMA_API_BASE_URL}/api/chat"
+    try:
+        response = requests.request(
+            method="POST",
+            url=target_url,
+            headers=headers,
+            json=translation_prompt,
+            params=params,
+        )
+
+        def generate():
+            for chunk in response.iter_content(chunk_size=1024):
+                if chunk:
+                    yield chunk
+
+        if stream:
+            return Response(generate(), status=response.status_code, headers=dict(response.headers))
+        else:
+            return Response(status=response.status_code, headers=dict(response.headers))
+
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"Error during Spanish translation streaming: {e}")
+        return jsonify({"error": str(e)}), 500
+
+def check_if_english(message):
+    """
+    Checks if the given message is in English by calling the /api/generate endpoint.
+    Generates its own headers for the request and returns a boolean.
+    """
+    detection_prompt = {
+        "model": "llama3.2:3b",
+        "prompt": f"Is the following text in English? Respond only with 'true' or 'false':\n\nEnglish Candate:{message}",
+        "stream": False  # Ensure a single JSON response
+    }
+
+    detection_url = f"{OLLAMA_API_BASE_URL}/api/generate"
+    headers = {"Content-Type": "application/json"}  # Generate new headers
+
+    try:
+        response = requests.post(
+            url=detection_url,
+            headers=headers,  # Use the generated headers
+            json=detection_prompt
+        )
+
+        if response.status_code == 200:
+            response_json = response.json()
+            is_english = response_json.get("response", "false").strip().lower() == "true"
+            return is_english
+        else:
+            app.logger.error(f"LLM language detection failed: {response.status_code}, {response.text}")
+            return False
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"Error during language detection: {e}")
+        return False
 
 @app.route('/health', methods=['GET'])
 def health():
