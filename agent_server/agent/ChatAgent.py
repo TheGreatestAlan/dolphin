@@ -5,13 +5,9 @@ import uuid
 
 from agent_server.integrations.ChatHandler import ChatSession
 from agent_server.llms.LLMFactory import LLMFactory, ModelType
+from agent_server.llms.LLMInterface import LLMInterface
 
 logger = logging.getLogger(__name__)
-
-# HEMMINGWAY BRIDGE
-# K you've updated the chat related stuff and got it working.  Looks like
-# you're not storing the response of the chat in the history, so it thinks
-# there's just a series of user requests which haven't been answered.
 
 class ChatAgent():
     def __init__(self):
@@ -38,12 +34,6 @@ class ChatAgent():
         self.full_system_message = f"{self.personality}\n\n{self.system_message}"
 
     def process_user_message(self, user_message: str, chat_session:ChatSession):
-        """
-        Process the user's message and handle streaming and parsing internally.
-        If stream_handler is provided, it will be used to stream content.
-        Returns a tuple (conversation_message, task_json).
-        """
-        # Build the prompt
         prompt = (
             f"The user just sent the following message:\n\"{user_message}\"\n"
             "Please analyze the message according to your responsibilities."
@@ -53,16 +43,7 @@ class ChatAgent():
         response_generator = self.llm.stream_response(prompt, self.full_system_message)
 
         # Handle streaming and parsing
-        task_json = self.handle_response(response_generator, chat_session)
-        if not task_json:
-            return None
-
-        try:
-            return json.loads(task_json).get("task_request")
-        except json.JSONDecodeError:
-            # Handle invalid JSON here
-            logger.error("Problem decoding task:" + task_json)
-            return None
+        return self.handle_response(response_generator, chat_session)
 
     def handle_response(self, response_generator, chat_session: ChatSession):
         """
@@ -70,49 +51,43 @@ class ChatAgent():
         Detects and processes '[conversation]' and '[task_request]' tags.
         Returns a tuple (conversation_message, task_request_content).
         """
-        finding_buffer = ""
         in_conversation = False
         task_request_content = None
         message_id = str(uuid.uuid4())
 
         # Debugging variable to capture unedited raw response
-        raw_response_debug = ""
+        raw_response = ""
+
+        # Temporary buffer to handle split tags
+        temp_buffer = ""
 
         for chunk in response_generator:
-            finding_buffer += chunk
-            raw_response_debug += chunk  # Append each chunk to raw debug variable
-            logger.debug("CHUNK: " + chunk)
+            temp_buffer += chunk
+            raw_response += chunk  # Append each chunk to raw debug variable
 
-            # Check for conversation tags
-            if not in_conversation and '[conversation]' in finding_buffer:
+            # Check if the start tag `[conversation]` is present
+            if not in_conversation and '[conversation]' in temp_buffer:
                 in_conversation = True
-                finding_buffer = finding_buffer.split('[conversation]', 1)[1]
+                # Remove everything up to and including the start tag
+                temp_buffer = temp_buffer.split('[conversation]', 1)[1]
 
             if in_conversation:
-                if '[/conversation]' in finding_buffer:
-                    # Extract conversation content
-                    content, remaining = finding_buffer.split('[/conversation]', 1)
-                    chat_session.parse_llm_stream(content, message_id)
-                    finding_buffer = remaining
-                    in_conversation = False
+                if '[/conversation]' in temp_buffer:
+                    # Handle closing tag
+                    content, temp_buffer = temp_buffer.split('[/conversation]', 1)
+                    chat_session.parse_llm_stream(content + LLMInterface.END_STREAM, message_id)
+                    in_conversation = False  # Reset conversation state
                 else:
-                    continue  # Wait for the closing tag, continue collecting
+                    # Stream intermediate content
+                    chat_session.parse_llm_stream(temp_buffer, message_id)
+                    temp_buffer = ""  # Clear the buffer after streaming content
 
-            # Check for task_request tag
-            if '[task_request]' in finding_buffer:
-                # Extract task_request content
-                task_start = finding_buffer.find('[task_request]')
-                task_end = finding_buffer.find('[/task_request]')
-                if task_end != -1:
-                    task_request_content = finding_buffer[task_start + len('[task_request]'):task_end].strip()
-                    logger.info(f"Received task request: {task_request_content}")
-                    finding_buffer = finding_buffer[task_end + len('[/task_request]'):]
-                    break  # Assuming only one task request is expected
-                else:
-                    continue  # Wait for the closing tag, continue collecting
+        # Extract task_request if it exists
+        if '[task_request]' in raw_response and '[/task_request]' in raw_response:
+            start = raw_response.find('[task_request]') + len('[task_request]')
+            end = raw_response.find('[/task_request]')
+            task_request_content = raw_response[start:end].strip()
 
-        # Save raw response for debugging purposes
-        self.raw_response_debug = raw_response_debug  # Make it available as a class attribute
         return task_request_content
 
     def generate_final_response(self, reasoning_result: str, chat_session:ChatSession):

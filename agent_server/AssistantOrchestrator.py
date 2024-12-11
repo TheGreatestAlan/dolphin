@@ -8,6 +8,14 @@ from agent_server.integrations.ChatHandler import ChatSession
 
 logger = logging.getLogger(__name__)
 
+# HEMMINGWAY BRIDGE
+# Alrighty, you got the current chat timestamp stuff working.
+# You need to smooth out stripping the /conversation tag.
+# Additionally the python chat app looks like it's not handling
+# the [Done] tag correctly.
+
+# after that, you might want to start looking to deploy this out
+
 class AssistantOrchestrator(Assistant):
     def __init__(self, reasoning_agent: ReasoningAgent, chat_agent: ChatAgent, ):
         logger.info("Initializing AssistantOrchestrator...")
