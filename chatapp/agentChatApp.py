@@ -163,8 +163,15 @@ class ChatApp():
                             # Handle actual message
                             if 'message' in data:
                                 message = data.get('message')
-                                if message == "[DONE]":
+                                if "[DONE]" in message:
+                                    # Split message at [DONE]
+                                    pre_done_message, _, _ = message.partition("[DONE]")
+
+                                    # Add the part before [DONE] to the current message
+                                    self.current_message += pre_done_message.strip()
                                     self.message_history.append(f"Agent: {self.current_message.strip()}")
+
+                                    # Reset for the next message
                                     self.current_message = ""
                                     self.update_chat_display()
                                 else:

@@ -8,6 +8,8 @@ from agent_server.llms.LLMFactory import LLMFactory, ModelType
 from agent_server.llms.LLMInterface import LLMInterface
 
 logger = logging.getLogger(__name__)
+# HEMMINGWAY BRIDGE
+# Looks like it's not generating a task request correctly anymore, check it
 
 class ChatAgent():
     def __init__(self):
@@ -33,7 +35,7 @@ class ChatAgent():
         # Combine the personality and system message
         self.full_system_message = f"{self.personality}\n\n{self.system_message}"
 
-    def process_user_message(self, user_message: str, chat_session:ChatSession):
+    def process_user_message(self, user_message: str, chat_session: ChatSession):
         prompt = (
             f"The user just sent the following message:\n\"{user_message}\"\n"
             "Please analyze the message according to your responsibilities."
@@ -43,27 +45,30 @@ class ChatAgent():
         response_generator = self.llm.stream_response(prompt, self.full_system_message)
 
         # Handle streaming and parsing
-        return self.handle_response(response_generator, chat_session)
+        whole_message = self.handle_conversation_tag(response_generator, chat_session)
+        print(whole_message)
+        task_summary_content = None
 
-    def handle_response(self, response_generator, chat_session: ChatSession):
+        # Extract task_request if it exists
+        if '[task_summary]' in whole_message and '[/task_summary]' in whole_message:
+            start = whole_message.find('[task_summary]') + len('[task_summary]')
+            end = whole_message.find('[/task_summary]')
+            task_summary_content = whole_message[start:end].strip()
+
+        return task_summary_content
+
+    def handle_conversation_tag(self, response_generator, chat_session: ChatSession):
         """
-        Handles streaming and parsing of the response.
-        Detects and processes '[conversation]' and '[task_request]' tags.
-        Returns a tuple (conversation_message, task_request_content).
+        Handles streaming of the `[conversation]` tag, passing content to the ChatSession.
         """
-        in_conversation = False
-        task_request_content = None
-        message_id = str(uuid.uuid4())
-
-        # Debugging variable to capture unedited raw response
-        raw_response = ""
-
-        # Temporary buffer to handle split tags
         temp_buffer = ""
+        in_conversation = False
+        message_id = str(uuid.uuid4())
+        whole_message = ""
 
         for chunk in response_generator:
             temp_buffer += chunk
-            raw_response += chunk  # Append each chunk to raw debug variable
+            whole_message += chunk
 
             # Check if the start tag `[conversation]` is present
             if not in_conversation and '[conversation]' in temp_buffer:
@@ -75,22 +80,24 @@ class ChatAgent():
                 if '[/conversation]' in temp_buffer:
                     # Handle closing tag
                     content, temp_buffer = temp_buffer.split('[/conversation]', 1)
+                    content = content.replace('[/conversation]', '').strip()  # Ensure no extra whitespace or lingering tags
+
                     chat_session.parse_llm_stream(content + LLMInterface.END_STREAM, message_id)
-                    in_conversation = False  # Reset conversation state
+                    break  # Stop processing after the closing tag
                 else:
                     # Stream intermediate content
                     chat_session.parse_llm_stream(temp_buffer, message_id)
                     temp_buffer = ""  # Clear the buffer after streaming content
+        return whole_message
 
-        # Extract task_request if it exists
-        if '[task_request]' in raw_response and '[/task_request]' in raw_response:
-            start = raw_response.find('[task_request]') + len('[task_request]')
-            end = raw_response.find('[/task_request]')
-            task_request_content = raw_response[start:end].strip()
+    def handle_response(self, response_generator, chat_session: ChatSession):
+        """
+        Handles streaming and parsing of the response.
+        Detects and processes `[conversation]` and other tags if needed.
+        """
+        self.handle_conversation_tag(response_generator, chat_session)
 
-        return task_request_content
-
-    def generate_final_response(self, reasoning_result: str, chat_session:ChatSession):
+    def generate_final_response(self, reasoning_result: str, chat_session: ChatSession):
         """
         Generates the final response to the user after the ReAct module has processed the task.
         Returns a generator for streaming the response.
@@ -104,7 +111,4 @@ class ChatAgent():
 
         # Use the LLM's streaming interface to get a generator
         response_generator = self.llm.stream_response(prompt, self.full_system_message)
-        message_id = str(uuid.uuid4())
-
-        for chunk in response_generator:
-            chat_session.parse_llm_stream(chunk, message_id)
+        self.handle_conversation_tag(response_generator, chat_session)
