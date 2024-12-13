@@ -1,5 +1,7 @@
 import json
 import os
+from datetime import datetime
+
 from flask import Flask, request, Response, jsonify
 import requests
 
@@ -12,6 +14,7 @@ app = Flask(__name__)
 key_store = EncryptedKeyStore('keys.json.enc')
 API_KEY = key_store.get_api_key("FIREWORKS_API_KEY")
 BASE_URL = "https://api.fireworks.ai"
+model_name = "llama3.2:3b"
 
 @app.route('/<path:endpoint>', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def proxy_request(endpoint):
@@ -26,7 +29,7 @@ def proxy_request(endpoint):
             {
                 "models": [
                     {
-                        "name": "llama3.2:3b",
+                        "name": model_name,
                         "model": "llama3.2:3b",
                         "modified_at": "2024-10-24T08:28:31.8474952-06:00",
                         "size": 2019393189,
@@ -82,19 +85,13 @@ def proxy_request(endpoint):
         last_message = messages[-1].get("content", "") if isinstance(messages[-1], dict) else ""
 
         # Use the extracted content
-        response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_70B).stream_response(last_message, "None")
+        response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).stream_response(last_message, "None")
 
         return generate_ollama_response(response)
 
     except requests.exceptions.RequestException as e:
         app.logger.error(f"Error proxying request to {target_url}: {e}")
         return jsonify({"error": str(e)}), 500
-
-import json
-
-import json
-from datetime import datetime
-from flask import Response
 
 def generate_ollama_response(response):
     """
@@ -103,7 +100,6 @@ def generate_ollama_response(response):
     - Final chunk: JSON with "done": true and possibly additional metadata.
     """
 
-    model_name = "llama3.2:3b"  # Replace with the actual model name if you have it
 
     def generate_chunks():
         # Keep track of whether we have yielded any chunks
@@ -113,12 +109,13 @@ def generate_ollama_response(response):
             if chunk:
                 if isinstance(chunk, bytes):
                     chunk = chunk.decode("utf-8")
+                print(chunk)
 
                 # Current timestamp in ISO 8601 format
                 created_at = datetime.utcnow().isoformat() + "Z"
 
                 # Yield a JSON object with the required fields
-                yield json.dumps({
+                yield_obj = json.dumps({
                     "model": model_name,
                     "created_at": created_at,
                     "message": {
@@ -127,6 +124,8 @@ def generate_ollama_response(response):
                     },
                     "done": False
                 }) + "\n"
+                print(yield_obj)
+                yield yield_obj
                 yielded_chunks = True
 
         # After all chunks are done, output the final JSON object
