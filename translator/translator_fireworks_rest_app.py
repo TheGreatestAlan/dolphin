@@ -65,16 +65,6 @@ def proxy_request(endpoint):
     params = request.args
 
     try:
-
-        # response = requests.request(
-        #     method=request.method,
-        #     url=target_url,
-        #     headers=headers,
-        #     json=data if request.is_json else None,
-        #     params=params,
-        #     stream=(endpoint != "api/tags")  # Stream for all but /api/tags
-        # )
-        # Extract messages from the incoming data
         messages = data.get("messages", [])
 
         # Ensure that 'messages' is a list of dictionaries and access the last message's content
@@ -92,6 +82,56 @@ def proxy_request(endpoint):
     except requests.exceptions.RequestException as e:
         app.logger.error(f"Error proxying request to {target_url}: {e}")
         return jsonify({"error": str(e)}), 500
+
+def check_if_english(message: str) -> bool:
+    system_message = "You are a language detector."
+    prompt = f"Is the following text in English? Respond only with 'true' or 'false':\n\nEnglish Candidate:{message}"
+
+    # Use a non-streaming completion
+    response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).get_completion(
+        prompt=prompt,
+        system_message=system_message
+    )
+
+    is_english = response.strip().lower() == "true"
+    return is_english
+
+def english_translation(message: str, stream: bool):
+    system_message = "You are a concise and direct English translator. You will not be yappy."
+    prompt = f"Translate the following text to English:\n\n{message}"
+
+    # If the user requested streaming, we return a streaming response
+    if stream:
+        response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).stream_response(
+            prompt=prompt,
+            system_message=system_message
+        )
+        return generate_ollama_response(response)
+    else:
+        # Non-streaming response
+        completion = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).get_completion(
+            prompt=prompt,
+            system_message=system_message
+        )
+        return jsonify({"translation": completion})
+
+def spanish_translation(message: str, stream: bool):
+    system_message = "You are a concise and direct Spanish translator."
+    prompt = f"Translate the following text to Spanish:\n\n{message}"
+
+    if stream:
+        response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).stream_response(
+            prompt=prompt,
+            system_message=system_message
+        )
+        return generate_ollama_response(response)
+    else:
+        # Non-streaming response
+        completion = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).get_completion(
+            prompt=prompt,
+            system_message=system_message
+        )
+        return jsonify({"translation": completion})
 
 def generate_ollama_response(response):
     """
@@ -207,117 +247,41 @@ def handle_llama32_3b(data, headers, params):
         app.logger.error(f"Error in handle_llama32_3b: {e}")
         return jsonify({"error": str(e)}), 500
 
+
 def english_translation(message, stream, headers, params):
-    """
-    Streams the Spanish translation of the given English message in the expected Ollama format.
-    """
-    translation_prompt = {
-        "model": "llama3.2:3b",
-        "messages": [
-            {
-                'role': 'system',
-                'content': f"You are a concise and direct translating Spanish English expert.  You will not be yappy."
-            },
-            {
-            'role':'user',
-            'content':f"Translate the following text to English:\n\n{message}"
-        }
-        ],
-        "stream": stream
-    }
+    translation_prompt = [
+        {'role': 'system', 'content': "You are a concise and direct English translator."},
+        {'role': 'user', 'content': f"Translate the following text to English:\n\n{message}"}
+    ]
 
-    target_url = f"{BASE_URL}/api/chat"
-    try:
-        response = requests.request(
-            method="POST",
-            url=target_url,
-            headers=headers,
-            json=translation_prompt,
-            params=params,
+    # Use LLMFactory
+    response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).stream_response(
+        last_message="",
+        conversation=translation_prompt
+    )
+
+    return generate_ollama_response(response)
+
+
+@app.route('/translate_to_english', methods=['POST'])
+def translate_to_english():
+    data = request.get_json()
+    message = data.get("message", "")
+    # Check language (optional)
+    if not check_if_english(message):
+        # Translate to English
+        translation_prompt = [
+            {'role': 'system', 'content': "You are a concise and direct English translator."},
+            {'role': 'user', 'content': f"Translate the following text to English:\n\n{message}"}
+        ]
+
+        response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).stream_response(
+            last_message="",
+            conversation=translation_prompt
         )
-
-        def generate():
-            for chunk in response.iter_content(chunk_size=1024):
-                if chunk:
-                    yield chunk
-
-        if stream:
-            return Response(generate(), status=response.status_code, headers=dict(response.headers))
-        else:
-            return Response(status=response.status_code, headers=dict(response.headers))
-
-    except requests.exceptions.RequestException as e:
-        app.logger.error(f"Error during Spanish translation streaming: {e}")
-        return jsonify({"error": str(e)}), 500
-
-def spanish_translation(message, stream, headers, params):
-    """
-    Streams the Spanish translation of the given English message in the expected Ollama format.
-    """
-    translation_prompt = {
-        "model": "llama3.2:3b",
-        "messages": [{
-            'role':'user',
-            'content':f"Translate the following text to Spanish:\n\n{message}"
-        }],
-        "stream": stream
-    }
-
-    target_url = f"{BASE_URL}/api/chat"
-    try:
-        response = requests.request(
-            method="POST",
-            url=target_url,
-            headers=headers,
-            json=translation_prompt,
-            params=params,
-        )
-
-        def generate():
-            for chunk in response.iter_content(chunk_size=1024):
-                if chunk:
-                    yield chunk
-
-        if stream:
-            return Response(generate(), status=response.status_code, headers=dict(response.headers))
-        else:
-            return Response(status=response.status_code, headers=dict(response.headers))
-
-    except requests.exceptions.RequestException as e:
-        app.logger.error(f"Error during Spanish translation streaming: {e}")
-        return jsonify({"error": str(e)}), 500
-
-def check_if_english(message):
-    """
-    Checks if the given message is in English by calling the /api/generate endpoint.
-    Generates its own headers for the request and returns a boolean.
-    """
-    detection_prompt = {
-        "model": "llama3.2:3b",
-        "prompt": f"Is the following text in English? Respond only with 'true' or 'false':\n\nEnglish Candate:{message}",
-        "stream": False  # Ensure a single JSON response
-    }
-
-    detection_url = f"{BASE_URL}/api/generate"
-    headers = {"Content-Type": "application/json"}  # Generate new headers
-
-    try:
-        response = requests.post(
-            url=detection_url,
-            headers=headers,  # Use the generated headers
-            json=detection_prompt
-        )
-
-        if response.status_code == 200:
-            response_json = response.json()
-            is_english = response_json.get("response", "false").strip().lower() == "true"
-            return is_english
-        else:
-            app.logger.error(f"LLM language detection failed: {response.status_code}, {response.text}")
-            return False
-    except requests.exceptions.RequestException as e:
-        app.logger.error(f"Error during language detection: {e}")
-        return False
+        return generate_ollama_response(response)
+    else:
+        return jsonify({"message": "The text is already in English."})
 
 @app.route('/health', methods=['GET'])
 def health():
