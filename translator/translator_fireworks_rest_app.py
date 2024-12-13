@@ -1,54 +1,159 @@
+import json
 import os
 from flask import Flask, request, Response, jsonify
 import requests
 
 from agent_server.llms.EncryptedKeyStore import EncryptedKeyStore
+from agent_server.llms.LLMFactory import LLMFactory, ModelType
 
 app = Flask(__name__)
 
 # Read API Base URL and API Key from environment variables
 key_store = EncryptedKeyStore('keys.json.enc')
 API_KEY = key_store.get_api_key("FIREWORKS_API_KEY")
-BASE_URL = "https://api.fireworks.ai/inference/v1/chat/completions"
+BASE_URL = "https://api.fireworks.ai"
 
 @app.route('/<path:endpoint>', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def proxy_request(endpoint):
     """
     Proxies all requests to the Fireworks AI server, handling both standard and streaming responses.
+    Dynamically reroutes requests to the correct Fireworks endpoint based on the mapping.
+    Handles the api/tags call to return a fake response.
     """
-    target_url = f"{BASE_URL}/{endpoint}"
+    # Fake response for /api/tags
+    if endpoint == "api/tags":
+        return jsonify(
+            {
+                "models": [
+                    {
+                        "name": "llama3.2:3b",
+                        "model": "llama3.2:3b",
+                        "modified_at": "2024-10-24T08:28:31.8474952-06:00",
+                        "size": 2019393189,
+                        "digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+                        "details": {
+                            "parent_model": "",
+                            "format": "gguf",
+                            "family": "llama",
+                            "families": ["llama"],
+                            "parameter_size": "3.2B",
+                            "quantization_level": "Q4_K_M"
+                        },
+                    }
+                ]
+            }
+        ), 200
+
+    # Define endpoint mapping
+    endpoint_mapping = {
+        "api/chat": "/inference/v1/api/chat",
+        "chat/completions": "/inference/v1/chat/completions",
+        "api/generate": "/inference/v1/api/generate",
+    }
+
+    # Reroute to the correct Fireworks endpoint if mapped
+    target_path = endpoint_mapping.get(endpoint, f"/{endpoint}")
+    target_url = f"{BASE_URL}{target_path}"
+
+    # Proxy the request
     headers = {key: value for key, value in request.headers if key.lower() != 'host'}
     headers['Authorization'] = f"Bearer {API_KEY}"  # Add API key to headers
     data = request.get_json() if request.is_json else request.data
     params = request.args
 
     try:
-        # Intercept requests targeting the llama3.2:3b model
-        if endpoint == "api/chat" and request.is_json:
-            if data and data.get("model") == "llama3.2:3b":
-                return handle_llama32_3b(data, headers, params)
 
-        response = requests.request(
-            method=request.method,
-            url=target_url,
-            headers=headers,
-            json=data if request.is_json else None,
-            params=params,
-            stream = (endpoint != "api/tags")  # Stream for all but /api/tags
+        # response = requests.request(
+        #     method=request.method,
+        #     url=target_url,
+        #     headers=headers,
+        #     json=data if request.is_json else None,
+        #     params=params,
+        #     stream=(endpoint != "api/tags")  # Stream for all but /api/tags
+        # )
+        # Extract messages from the incoming data
+        messages = data.get("messages", [])
 
-        )
+        # Ensure that 'messages' is a list of dictionaries and access the last message's content
+        if not messages or not isinstance(messages, list):
+            return jsonify({"error": "Invalid message format"}), 400
 
-        # Handle streaming responses
-        def generate():
-            for chunk in response.iter_content(chunk_size=1024):
-                if chunk:  # Filter out keep-alive chunks
-                    yield chunk
+        # Safely access the last message content
+        last_message = messages[-1].get("content", "") if isinstance(messages[-1], dict) else ""
 
-        return Response(generate(), status=response.status_code, headers=dict(response.headers))
+        # Use the extracted content
+        response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_70B).stream_response(last_message, "None")
+
+        return generate_ollama_response(response)
 
     except requests.exceptions.RequestException as e:
         app.logger.error(f"Error proxying request to {target_url}: {e}")
         return jsonify({"error": str(e)}), 500
+
+import json
+
+import json
+from datetime import datetime
+from flask import Response
+
+def generate_ollama_response(response):
+    """
+    Convert your response chunks into Ollama's streaming format:
+    - Each chunk: JSON with "model", "created_at", "message", and "done": false
+    - Final chunk: JSON with "done": true and possibly additional metadata.
+    """
+
+    model_name = "llama3.2:3b"  # Replace with the actual model name if you have it
+
+    def generate_chunks():
+        # Keep track of whether we have yielded any chunks
+        yielded_chunks = False
+
+        for chunk in response:
+            if chunk:
+                if isinstance(chunk, bytes):
+                    chunk = chunk.decode("utf-8")
+
+                # Current timestamp in ISO 8601 format
+                created_at = datetime.utcnow().isoformat() + "Z"
+
+                # Yield a JSON object with the required fields
+                yield json.dumps({
+                    "model": model_name,
+                    "created_at": created_at,
+                    "message": {
+                        "role": "assistant",
+                        "content": chunk
+                    },
+                    "done": False
+                }) + "\n"
+                yielded_chunks = True
+
+        # After all chunks are done, output the final JSON object
+        # If you have actual metrics, insert them here. Otherwise, omit or use dummy values.
+        created_at = datetime.utcnow().isoformat() + "Z"
+        final_obj = {
+            "model": model_name,
+            "created_at": created_at,
+            "message": {
+                "role": "assistant",
+                "content": ""
+            },
+            "done": True,
+            "done_reason": "stop",
+            # You can omit the durations if you don't have them:
+            # "total_duration": 737571100,
+            # "load_duration": 42606400,
+            # "prompt_eval_count": 26,
+            # "prompt_eval_duration": 216262000,
+            # "eval_count": 8,
+            # "eval_duration": 476584000
+        }
+
+        # If we never yielded any chunks, you still need to provide a final object
+        yield json.dumps(final_obj) + "\n"
+
+    return Response(generate_chunks(), content_type="application/json")
 
 def handle_llama32_3b(data, headers, params):
     """
