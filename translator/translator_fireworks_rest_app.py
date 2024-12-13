@@ -58,37 +58,100 @@ def proxy_request(endpoint):
     target_path = endpoint_mapping.get(endpoint, f"/{endpoint}")
     target_url = f"{BASE_URL}{target_path}"
 
-    # Proxy the request
     headers = {key: value for key, value in request.headers if key.lower() != 'host'}
-    headers['Authorization'] = f"Bearer {API_KEY}"  # Add API key to headers
+    headers['Authorization'] = f"Bearer {API_KEY}"
     data = request.get_json() if request.is_json else request.data
     params = request.args
 
     try:
         messages = data.get("messages", [])
 
-        # Ensure that 'messages' is a list of dictionaries and access the last message's content
         if not messages or not isinstance(messages, list):
             return jsonify({"error": "Invalid message format"}), 400
 
-        # Safely access the last message content
         last_message = messages[-1].get("content", "") if isinstance(messages[-1], dict) else ""
 
-        # Use the extracted content
+        # Just returning a dummy streaming response from LLMFactory for demonstration
         response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).stream_response(last_message, "None")
-
         return generate_ollama_response(response)
 
     except requests.exceptions.RequestException as e:
         app.logger.error(f"Error proxying request to {target_url}: {e}")
         return jsonify({"error": str(e)}), 500
 
+@app.route('/api/chat', methods=['POST'])
+def handle_chat():
+    data = request.get_json()
+    messages = data.get("messages", [])
+    if not messages or not isinstance(messages, list):
+        return jsonify({"error": "Invalid message format"}), 400
+
+    # Get the user's current message
+    user_message = messages[-1].get("content", "").strip()
+
+    # If user requests translation of last assistant message
+    if user_message.lower() in ["traducir", "translate"]:
+        # Retrieve the last assistant message. Implement this function as needed.
+        last_assistant_message = get_last_assistant_message(messages)
+        if not last_assistant_message:
+            return jsonify({"error": "No assistant message found to translate."}), 400
+
+        # Translate the last assistant message to English
+        return english_translation(last_assistant_message, stream=True)
+
+    # Otherwise, check language
+    is_english = check_if_english(user_message)
+
+    if is_english:
+        # If English, first translate user message to Spanish to maintain a Spanish conversation
+        # Once translated, the Spanish message becomes the 'prompt' for the Spanish conversationalist
+        # For simplicity, we do a synchronous translation first (non-streaming)
+        translation_response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).generate_response(
+            prompt=f"Translate the following text to Spanish:\n\n{user_message}",
+            system_message="You are a concise and direct Spanish translator."
+        )
+        user_message_in_spanish = translation_response.strip()
+        # Now converse in Spanish using the translated message
+        return converse_in_spanish(user_message_in_spanish)
+    else:
+        # If not English, just converse in Spanish directly
+        return converse_in_spanish(user_message)
+
+
+def converse_in_spanish(user_message: str):
+    """
+    Use the Spanish persona and system instructions to continue the conversation in Spanish.
+    """
+    system_message = (
+        "Eres un conversador en español muy conocedor y encantador. "
+        "Responderás siempre en un español claro y atractivo, "
+        "brindando información útil y conversaciones interesantes."
+    )
+
+    response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).stream_response(
+        prompt=user_message,
+        system_message=system_message
+    )
+
+    return generate_ollama_response(response)
+
+
+def get_last_assistant_message(messages):
+    """
+    Extract the last assistant message from the conversation history.
+    For example, look backwards through the messages and find the most recent with 'role': 'assistant'.
+    """
+    for msg in reversed(messages):
+        if msg.get("role") == "assistant":
+            return msg.get("content", "").strip()
+    return None
+
 def check_if_english(message: str) -> bool:
     system_message = "You are a language detector."
     prompt = f"Is the following text in English? Respond only with 'true' or 'false':\n\nEnglish Candidate:{message}"
 
     # Use a non-streaming completion
-    response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).get_completion(
+    response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).generate_response(
         prompt=prompt,
         system_message=system_message
     )
@@ -109,7 +172,7 @@ def english_translation(message: str, stream: bool):
         return generate_ollama_response(response)
     else:
         # Non-streaming response
-        completion = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).get_completion(
+        completion = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).generate_response(
             prompt=prompt,
             system_message=system_message
         )
@@ -127,7 +190,7 @@ def spanish_translation(message: str, stream: bool):
         return generate_ollama_response(response)
     else:
         # Non-streaming response
-        completion = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).get_completion(
+        completion = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).generate_response(
             prompt=prompt,
             system_message=system_message
         )
@@ -267,21 +330,17 @@ def english_translation(message, stream, headers, params):
 def translate_to_english():
     data = request.get_json()
     message = data.get("message", "")
-    # Check language (optional)
-    if not check_if_english(message):
-        # Translate to English
-        translation_prompt = [
-            {'role': 'system', 'content': "You are a concise and direct English translator."},
-            {'role': 'user', 'content': f"Translate the following text to English:\n\n{message}"}
-        ]
+    # Translate to English
+    translation_prompt = [
+        {'role': 'system', 'content': "You are a concise and direct English translator."},
+        {'role': 'user', 'content': f"Translate the following text to English:\n\n{message}"}
+    ]
 
-        response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).stream_response(
-            last_message="",
-            conversation=translation_prompt
-        )
-        return generate_ollama_response(response)
-    else:
-        return jsonify({"message": "The text is already in English."})
+    response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).stream_response(
+        last_message="",
+        conversation=translation_prompt
+    )
+    return generate_ollama_response(response)
 
 @app.route('/health', methods=['GET'])
 def health():
