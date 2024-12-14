@@ -106,13 +106,7 @@ def handle_chat():
         # If English, first translate user message to Spanish to maintain a Spanish conversation
         # Once translated, the Spanish message becomes the 'prompt' for the Spanish conversationalist
         # For simplicity, we do a synchronous translation first (non-streaming)
-        translation_response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).generate_response(
-            prompt=f"Translate the following text to Spanish:\n\n{user_message}",
-            system_message="You are a concise and direct Spanish translator."
-        )
-        user_message_in_spanish = translation_response.strip()
-        # Now converse in Spanish using the translated message
-        return converse_in_spanish(user_message_in_spanish)
+        return spanish_translation(user_message, True)
     else:
         # If not English, just converse in Spanish directly
         return converse_in_spanish(user_message)
@@ -123,9 +117,10 @@ def converse_in_spanish(user_message: str):
     Use the Spanish persona and system instructions to continue the conversation in Spanish.
     """
     system_message = (
-        "Eres un conversador en español muy conocedor y encantador. "
-        "Responderás siempre en un español claro y atractivo, "
-        "brindando información útil y conversaciones interesantes."
+        "Eres un conversador en español muy conocedor y encantador. Responderás siempre en un español claro y "
+        "atractivo, brindando información útil y conversaciones interesantes. La conversación debe ser un ir y venir "
+        "entre ambos, y trata de no extenderte más de uno o dos párrafos a la vez."
+
     )
 
     response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).stream_response(
@@ -163,20 +158,11 @@ def english_translation(message: str, stream: bool):
     system_message = "You are a concise and direct English translator. You will not be yappy."
     prompt = f"Translate the following text to English:\n\n{message}"
 
-    # If the user requested streaming, we return a streaming response
-    if stream:
-        response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).stream_response(
-            prompt=prompt,
-            system_message=system_message
-        )
-        return generate_ollama_response(response)
-    else:
-        # Non-streaming response
-        completion = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).generate_response(
-            prompt=prompt,
-            system_message=system_message
-        )
-        return jsonify({"translation": completion})
+    response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).stream_response(
+        prompt=prompt,
+        system_message=system_message
+    )
+    return generate_ollama_response(response)
 
 def spanish_translation(message: str, stream: bool):
     system_message = "You are a concise and direct Spanish translator."
@@ -212,7 +198,6 @@ def generate_ollama_response(response):
             if chunk:
                 if isinstance(chunk, bytes):
                     chunk = chunk.decode("utf-8")
-                print(chunk)
 
                 # Current timestamp in ISO 8601 format
                 created_at = datetime.utcnow().isoformat() + "Z"
@@ -227,7 +212,6 @@ def generate_ollama_response(response):
                     },
                     "done": False
                 }) + "\n"
-                print(yield_obj)
                 yield yield_obj
                 yielded_chunks = True
 
@@ -309,21 +293,6 @@ def handle_llama32_3b(data, headers, params):
     except requests.exceptions.RequestException as e:
         app.logger.error(f"Error in handle_llama32_3b: {e}")
         return jsonify({"error": str(e)}), 500
-
-
-def english_translation(message, stream, headers, params):
-    translation_prompt = [
-        {'role': 'system', 'content': "You are a concise and direct English translator."},
-        {'role': 'user', 'content': f"Translate the following text to English:\n\n{message}"}
-    ]
-
-    # Use LLMFactory
-    response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).stream_response(
-        last_message="",
-        conversation=translation_prompt
-    )
-
-    return generate_ollama_response(response)
 
 
 @app.route('/translate_to_english', methods=['POST'])
