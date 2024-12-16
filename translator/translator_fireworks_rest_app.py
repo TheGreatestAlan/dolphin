@@ -15,6 +15,7 @@ key_store = EncryptedKeyStore('keys.json.enc')
 API_KEY = key_store.get_api_key("FIREWORKS_API_KEY")
 BASE_URL = "https://api.fireworks.ai"
 model_name = "llama3.2:3b"
+rating_threshold = 7
 
 @app.route('/<path:endpoint>', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def proxy_request(endpoint):
@@ -100,15 +101,11 @@ def handle_chat():
         return english_translation(last_assistant_message, stream=True)
 
     # Otherwise, check language
-    is_english = check_if_english(user_message)
+    language_attempt_rating = rate_spanish_attempt(user_message)
 
-    if is_english:
-        # If English, first translate user message to Spanish to maintain a Spanish conversation
-        # Once translated, the Spanish message becomes the 'prompt' for the Spanish conversationalist
-        # For simplicity, we do a synchronous translation first (non-streaming)
+    if language_attempt_rating <= rating_threshold:
         return spanish_translation(user_message, True)
     else:
-        # If not English, just converse in Spanish directly
         return converse_in_spanish(user_message)
 
 
@@ -141,18 +138,36 @@ def get_last_assistant_message(messages):
             return msg.get("content", "").strip()
     return None
 
-def check_if_english(message: str) -> bool:
-    system_message = "You are a language detector."
-    prompt = f"Is the following text in English? Respond only with 'true' or 'false':\n\nEnglish Candidate:{message}"
+def rate_spanish_attempt(message: str) -> int:
+    system_message = (
+        "You are a Spanish language message evaluator. You will read the message from a Spanish learning "
+        "student. You will rate the message on the Spanish correctness from 1 to 10 with 1 being "
+        "completely incorrect to 10 being completely correct. Don't take diacritical marks into the correctness of "
+        "the message.  DO NOT PROVIDE ANY EXPLANATION.  DO NOT SAY ANYTHING ELSE. ONLY RETURN THE INTEGER."
+    )
 
-    # Use a non-streaming completion
-    response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).generate_response(
+    prompt = f"Rate the following Spanish sentence correctness from 1 to 10:\n\n{message}"
+
+    rating_response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).generate_response(
         prompt=prompt,
         system_message=system_message
     )
 
-    is_english = response.strip().lower() == "true"
-    return is_english
+    # Attempt to parse the rating from the response.
+    try:
+        print(rating_response)
+        rating = int(rating_response.strip())
+    except ValueError:
+        # If parsing fails, default to a low rating
+        rating = 1
+
+    # Ensure rating is within the 1-10 range
+    if rating < 1:
+        rating = 1
+    elif rating > 10:
+        rating = 10
+
+    return rating
 
 def english_translation(message: str, stream: bool):
     system_message = "You are a concise and direct English translator. You will not be yappy."
@@ -165,7 +180,9 @@ def english_translation(message: str, stream: bool):
     return generate_ollama_response(response)
 
 def spanish_translation(message: str, stream: bool):
-    system_message = "You are a concise and direct Spanish translator."
+    system_message = "You are a concise and direct Spanish translator.  If the message is incorrect, give the " \
+                     "correct message and if necessary a short explanation. Don't take into account correcting " \
+                     "diacritical marks."
     prompt = f"Translate the following text to Spanish:\n\n{message}"
 
     if stream:
@@ -258,7 +275,7 @@ def handle_llama32_3b(data, headers, params):
     if user_message == 'translato':
         return english_translation(messages[-2].get("content","").strip(), True, headers, params)
     else:
-        is_english = check_if_english(user_message)
+        is_english = rate_spanish_attempt(user_message)
 
     # Log the result of the language check
     app.logger.debug(f"Message: '{user_message}', Is English: {is_english}")
