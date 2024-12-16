@@ -207,8 +207,9 @@ def translate_to_target_language(message: str, stream: bool, target_language: st
 
 def generate_ollama_response(response, model_name):
     def generate_chunks():
-        yielded_chunks = False
         for chunk in response:
+            if "[DONE]" in chunk:
+                chunk = chunk.replace("[DONE]", "")
             if chunk:
                 created_at = datetime.utcnow().isoformat() + "Z"
                 yield_obj = json.dumps({
@@ -221,7 +222,6 @@ def generate_ollama_response(response, model_name):
                     "done": False
                 }) + "\n"
                 yield yield_obj
-                yielded_chunks = True
 
         created_at = datetime.utcnow().isoformat() + "Z"
         final_obj = {
