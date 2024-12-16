@@ -4,8 +4,8 @@ from datetime import datetime
 from flask import Flask, request, Response, jsonify
 import requests
 
-from agent_server.llms.EncryptedKeyStore import EncryptedKeyStore
-from agent_server.llms.LLMFactory import LLMFactory, ModelType
+from translator.llms.EncryptedKeyStore import EncryptedKeyStore
+from translator.llms.LLMFactory import LLMFactory, ModelType
 
 app = Flask(__name__)
 
@@ -13,7 +13,7 @@ key_store = EncryptedKeyStore('keys.json.enc')
 API_KEY = key_store.get_api_key("FIREWORKS_API_KEY")
 BASE_URL = "https://api.fireworks.ai"
 MODEL_TYPE = ModelType.FIREWORKS_LLAMA_3_70B
-SUPPORTED_LANGUAGES = ["English", "German", "French", "Italian", "Portuguese", "Hindi", "Spanish", "Thai"]
+SUPPORTED_LANGUAGES = ["German", "French", "Italian", "Portuguese", "Hindi", "Spanish", "Thai"]
 rating_threshold = 7
 
 # Keep instructions in English and just refer to the target language in the prompt.
