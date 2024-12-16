@@ -14,14 +14,10 @@ app = Flask(__name__)
 key_store = EncryptedKeyStore('keys.json.enc')
 API_KEY = key_store.get_api_key("FIREWORKS_API_KEY")
 BASE_URL = "https://api.fireworks.ai"
-model_name = "llama3.2:3b"
+
 rating_threshold = 7
 
-# You can dynamically change this from "Spanish" to "Italian" or any other language
-TARGET_LANGUAGE = "Italian"
-
 # Keep instructions in English and just refer to the target language in the prompt.
-# Use placeholders where the target language is mentioned, then format the strings.
 INSTRUCTIONS = {
     "persona_system_message": (
         "You are a knowledgeable and charming conversation partner who always responds in clear, "
@@ -39,7 +35,6 @@ INSTRUCTIONS = {
     )
 }
 
-
 @app.route('/<path:endpoint>', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def proxy_request(endpoint):
     if endpoint == "api/tags":
@@ -47,8 +42,23 @@ def proxy_request(endpoint):
             {
                 "models": [
                     {
-                        "name": model_name,
-                        "model": "llama3.2:3b",
+                        "name": "llama3.2:3b_italian",
+                        "model": "llama3.2:3b_italian",
+                        "modified_at": "2024-10-24T08:28:31.8474952-06:00",
+                        "size": 2019393189,
+                        "digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
+                        "details": {
+                            "parent_model": "",
+                            "format": "gguf",
+                            "family": "llama",
+                            "families": ["llama"],
+                            "parameter_size": "3.2B",
+                            "quantization_level": "Q4_K_M"
+                        },
+                    },
+                    {
+                        "name": "llama3.2:3b_spanish",
+                        "model": "llama3.2:3b_spanish",
                         "modified_at": "2024-10-24T08:28:31.8474952-06:00",
                         "size": 2019393189,
                         "digest": "a80c4f17acd55265feec403c7aef86be0c25983ab279d83f3bcd3abbcb5b8b72",
@@ -84,9 +94,14 @@ def proxy_request(endpoint):
         if not messages or not isinstance(messages, list):
             return jsonify({"error": "Invalid message format"}), 400
 
+        # Determine model and language
+        # If no model_name is provided, default to one
+        model_name = data.get("model_name", "llama3.2:3b_italian")
+        target_language = extract_language_from_model_name(model_name)
+
         last_message = messages[-1].get("content", "") if isinstance(messages[-1], dict) else ""
         response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).stream_response(last_message, "None")
-        return generate_ollama_response(response)
+        return generate_ollama_response(response, model_name)
 
     except requests.exceptions.RequestException as e:
         app.logger.error(f"Error proxying request to {target_url}: {e}")
@@ -100,33 +115,41 @@ def handle_chat():
     if not messages or not isinstance(messages, list):
         return jsonify({"error": "Invalid message format"}), 400
 
+    # Extract model_name from request, default if not present
+    model_name = data.get("model", "llama3.2:3b_italian")
+    target_language = extract_language_from_model_name(model_name)
+
     user_message = messages[-1].get("content", "").strip()
 
     # If user requests translation of last assistant message
-    if user_message.lower() in ["traducir", "translate"]:
+    if user_message.lower() in ["translate"]:
         last_assistant_message = get_last_assistant_message(messages)
         if not last_assistant_message:
             return jsonify({"error": "No assistant message found to translate."}), 400
-        return english_translation(last_assistant_message, stream=True)
+        return english_translation(last_assistant_message, stream=True, model_name=model_name)
 
     # Otherwise, check language correctness rating
-    language_attempt_rating = rate_language_attempt(user_message)
+    language_attempt_rating = rate_language_attempt(user_message, target_language)
     if language_attempt_rating <= rating_threshold:
-        return translate_to_target_language(user_message, True)
+        return translate_to_target_language(user_message, True, target_language, model_name)
     else:
-        return converse_in_target_language(user_message)
+        return converse_in_target_language(user_message, target_language, model_name)
 
 
-def converse_in_target_language(user_message: str):
-    """
-    Use the chosen language persona and system instructions to continue the conversation.
-    """
-    system_message = INSTRUCTIONS["persona_system_message"].format(target_language=TARGET_LANGUAGE)
+def extract_language_from_model_name(model_name: str) -> str:
+    # Assuming model_name format: "llama3.2:3b_italian", "llama3.2:3b_spanish", etc.
+    # Extract the part after the underscore and capitalize it if needed.
+    if "_" in model_name:
+        return model_name.split("_")[-1].capitalize()
+    return "Spanish"  # default if no underscore found
+
+def converse_in_target_language(user_message: str, target_language: str, model_name: str):
+    system_message = INSTRUCTIONS["persona_system_message"].format(target_language=target_language)
     response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).stream_response(
         prompt=user_message,
         system_message=system_message
     )
-    return generate_ollama_response(response)
+    return generate_ollama_response(response, model_name)
 
 
 def get_last_assistant_message(messages):
@@ -136,26 +159,24 @@ def get_last_assistant_message(messages):
     return None
 
 
-def rate_language_attempt(message: str) -> int:
-    system_message = INSTRUCTIONS["rating_system_message"].format(target_language=TARGET_LANGUAGE)
-    prompt = f"Rate the following {TARGET_LANGUAGE} sentence correctness from 1 to 10:\n\n{message}"
+def rate_language_attempt(message: str, target_language: str) -> int:
+    system_message = INSTRUCTIONS["rating_system_message"].format(target_language=target_language)
+    prompt = f"Rate the following {target_language} sentence correctness from 1 to 10:\n\n{message}"
 
     rating_response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).generate_response(
         prompt=prompt,
         system_message=system_message
     )
 
-    # Attempt to parse the rating
     try:
         rating = int(rating_response.strip())
     except ValueError:
         rating = 1
 
-    rating = max(1, min(rating, 10))
-    return rating
+    return max(1, min(rating, 10))
 
 
-def english_translation(message: str, stream: bool):
+def english_translation(message: str, stream: bool, model_name: str):
     system_message = "You are a concise and direct English translator. You will not be yappy."
     prompt = f"Translate the following text to English:\n\n{message}"
 
@@ -163,19 +184,19 @@ def english_translation(message: str, stream: bool):
         prompt=prompt,
         system_message=system_message
     )
-    return generate_ollama_response(response)
+    return generate_ollama_response(response, model_name)
 
 
-def translate_to_target_language(message: str, stream: bool):
-    system_message = INSTRUCTIONS["translation_system_message"].format(target_language=TARGET_LANGUAGE)
-    prompt = f"Translate the following text to {TARGET_LANGUAGE}:\n\n{message}"
+def translate_to_target_language(message: str, stream: bool, target_language: str, model_name: str):
+    system_message = INSTRUCTIONS["translation_system_message"].format(target_language=target_language)
+    prompt = f"Translate the following text to {target_language}:\n\n{message}"
 
     if stream:
         response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).stream_response(
             prompt=prompt,
             system_message=system_message
         )
-        return generate_ollama_response(response)
+        return generate_ollama_response(response, model_name)
     else:
         completion = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).generate_response(
             prompt=prompt,
@@ -184,14 +205,11 @@ def translate_to_target_language(message: str, stream: bool):
         return jsonify({"translation": completion})
 
 
-def generate_ollama_response(response):
+def generate_ollama_response(response, model_name):
     def generate_chunks():
         yielded_chunks = False
         for chunk in response:
             if chunk:
-                if isinstance(chunk, bytes):
-                    chunk = chunk.decode("utf-8")
-
                 created_at = datetime.utcnow().isoformat() + "Z"
                 yield_obj = json.dumps({
                     "model": model_name,
@@ -225,6 +243,7 @@ def generate_ollama_response(response):
 def translate_to_english_endpoint():
     data = request.get_json()
     message = data.get("message", "")
+    model_name = data.get("model_name", "llama3.2:3b_italian")
     translation_prompt = [
         {'role': 'system', 'content': "You are a concise and direct English translator."},
         {'role': 'user', 'content': f"Translate the following text to English:\n\n{message}"}
@@ -234,7 +253,7 @@ def translate_to_english_endpoint():
         last_message="",
         conversation=translation_prompt
     )
-    return generate_ollama_response(response)
+    return generate_ollama_response(response, model_name)
 
 
 @app.route('/health', methods=['GET'])
