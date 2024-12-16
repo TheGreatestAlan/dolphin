@@ -17,6 +17,53 @@ BASE_URL = "https://api.fireworks.ai"
 model_name = "llama3.2:3b"
 rating_threshold = 7
 
+# Introduce a variable to easily switch target language
+# For demonstration: switch between "Spanish" and "Italian"
+TARGET_LANGUAGE = "Italian"  # or "Italian"
+
+# Define language-specific instructions
+LANGUAGE_CONFIG = {
+    "Spanish": {
+        "persona_system_message": (
+            "Eres un conversador en español muy conocedor y encantador. Responderás siempre en un español claro y "
+            "atractivo, brindando información útil y conversaciones interesantes. La conversación debe ser un ir y venir "
+            "entre ambos, y trata de no extenderte más de uno o dos párrafos a la vez."
+        ),
+        "translation_system_message": (
+            "You are a concise and direct Spanish translator. If the message is incorrect, give the correct message and "
+            "if necessary a short explanation. Don't take into account correcting diacritical marks."
+        ),
+        "rating_system_message": (
+            "You are a Spanish language message evaluator. You will read the message from a Spanish learning "
+            "student. You will rate the message on the Spanish correctness from 1 to 10 with 1 being "
+            "completely incorrect to 10 being completely correct. Don't take diacritical marks into the correctness of "
+            "the message. DO NOT PROVIDE ANY EXPLANATION. DO NOT SAY ANYTHING ELSE. ONLY RETURN THE INTEGER."
+        ),
+        "translator_role": "Spanish translator",
+        "persona_language": "Spanish"
+    },
+    "Italian": {
+        "persona_system_message": (
+            "Sei un conversatore italiano molto esperto e affascinante. Risponderai sempre in un italiano chiaro e "
+            "attraente, fornendo informazioni utili e conversazioni interessanti. La conversazione deve essere un "
+            "dialogo tra entrambi, e cerca di non dilungarti più di uno o due paragrafi alla volta."
+        ),
+        "translation_system_message": (
+            "You are a concise and direct Italian translator. If the message is incorrect, give the correct message and "
+            "if necessary a short explanation. Don't take into account correcting diacritical marks."
+        ),
+        # If you also wanted to rate correctness in Italian, you could adapt this message:
+        "rating_system_message": (
+            "You are an Italian language message evaluator. You will read the message from a student learning Italian. "
+            "You will rate the message on its Italian correctness from 1 to 10 with 1 being completely incorrect "
+            "and 10 being completely correct. Don't consider diacritical marks in correctness. "
+            "DO NOT PROVIDE ANY EXPLANATION. DO NOT SAY ANYTHING ELSE. ONLY RETURN THE INTEGER."
+        ),
+        "translator_role": "Italian translator",
+        "persona_language": "Italian"
+    }
+}
+
 @app.route('/<path:endpoint>', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def proxy_request(endpoint):
     """
@@ -92,7 +139,6 @@ def handle_chat():
 
     # If user requests translation of last assistant message
     if user_message.lower() in ["traducir", "translate"]:
-        # Retrieve the last assistant message. Implement this function as needed.
         last_assistant_message = get_last_assistant_message(messages)
         if not last_assistant_message:
             return jsonify({"error": "No assistant message found to translate."}), 400
@@ -100,25 +146,20 @@ def handle_chat():
         # Translate the last assistant message to English
         return english_translation(last_assistant_message, stream=True)
 
-    # Otherwise, check language
-    language_attempt_rating = rate_spanish_attempt(user_message)
+    # Otherwise, check language correctness rating
+    language_attempt_rating = rate_language_attempt(user_message)
 
     if language_attempt_rating <= rating_threshold:
-        return spanish_translation(user_message, True)
+        return translate_to_target_language(user_message, True)
     else:
-        return converse_in_spanish(user_message)
+        return converse_in_target_language(user_message)
 
 
-def converse_in_spanish(user_message: str):
+def converse_in_target_language(user_message: str):
     """
-    Use the Spanish persona and system instructions to continue the conversation in Spanish.
+    Use the chosen language persona and system instructions to continue the conversation in that language.
     """
-    system_message = (
-        "Eres un conversador en español muy conocedor y encantador. Responderás siempre en un español claro y "
-        "atractivo, brindando información útil y conversaciones interesantes. La conversación debe ser un ir y venir "
-        "entre ambos, y trata de no extenderte más de uno o dos párrafos a la vez."
-
-    )
+    system_message = LANGUAGE_CONFIG[TARGET_LANGUAGE]["persona_system_message"]
 
     response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).stream_response(
         prompt=user_message,
@@ -131,22 +172,16 @@ def converse_in_spanish(user_message: str):
 def get_last_assistant_message(messages):
     """
     Extract the last assistant message from the conversation history.
-    For example, look backwards through the messages and find the most recent with 'role': 'assistant'.
     """
     for msg in reversed(messages):
         if msg.get("role") == "assistant":
             return msg.get("content", "").strip()
     return None
 
-def rate_spanish_attempt(message: str) -> int:
-    system_message = (
-        "You are a Spanish language message evaluator. You will read the message from a Spanish learning "
-        "student. You will rate the message on the Spanish correctness from 1 to 10 with 1 being "
-        "completely incorrect to 10 being completely correct. Don't take diacritical marks into the correctness of "
-        "the message.  DO NOT PROVIDE ANY EXPLANATION.  DO NOT SAY ANYTHING ELSE. ONLY RETURN THE INTEGER."
-    )
-
-    prompt = f"Rate the following Spanish sentence correctness from 1 to 10:\n\n{message}"
+def rate_language_attempt(message: str) -> int:
+    # For now, we assume the rating_system_message corresponds to checking correctness in TARGET_LANGUAGE.
+    system_message = LANGUAGE_CONFIG[TARGET_LANGUAGE]["rating_system_message"]
+    prompt = f"Rate the following {TARGET_LANGUAGE} sentence correctness from 1 to 10:\n\n{message}"
 
     rating_response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).generate_response(
         prompt=prompt,
@@ -155,7 +190,6 @@ def rate_spanish_attempt(message: str) -> int:
 
     # Attempt to parse the rating from the response.
     try:
-        print(rating_response)
         rating = int(rating_response.strip())
     except ValueError:
         # If parsing fails, default to a low rating
@@ -179,11 +213,10 @@ def english_translation(message: str, stream: bool):
     )
     return generate_ollama_response(response)
 
-def spanish_translation(message: str, stream: bool):
-    system_message = "You are a concise and direct Spanish translator.  If the message is incorrect, give the " \
-                     "correct message and if necessary a short explanation. Don't take into account correcting " \
-                     "diacritical marks."
-    prompt = f"Translate the following text to Spanish:\n\n{message}"
+def translate_to_target_language(message: str, stream: bool):
+    # Use the target language translation system message
+    system_message = LANGUAGE_CONFIG[TARGET_LANGUAGE]["translation_system_message"]
+    prompt = f"Translate the following text to {TARGET_LANGUAGE}:\n\n{message}"
 
     if stream:
         response = LLMFactory.get_singleton(ModelType.FIREWORKS_LLAMA_3_1_405B).stream_response(
@@ -201,14 +234,10 @@ def spanish_translation(message: str, stream: bool):
 
 def generate_ollama_response(response):
     """
-    Convert your response chunks into Ollama's streaming format:
-    - Each chunk: JSON with "model", "created_at", "message", and "done": false
-    - Final chunk: JSON with "done": true and possibly additional metadata.
+    Convert your response chunks into Ollama's streaming format.
     """
 
-
     def generate_chunks():
-        # Keep track of whether we have yielded any chunks
         yielded_chunks = False
 
         for chunk in response:
@@ -216,10 +245,8 @@ def generate_ollama_response(response):
                 if isinstance(chunk, bytes):
                     chunk = chunk.decode("utf-8")
 
-                # Current timestamp in ISO 8601 format
                 created_at = datetime.utcnow().isoformat() + "Z"
 
-                # Yield a JSON object with the required fields
                 yield_obj = json.dumps({
                     "model": model_name,
                     "created_at": created_at,
@@ -232,8 +259,6 @@ def generate_ollama_response(response):
                 yield yield_obj
                 yielded_chunks = True
 
-        # After all chunks are done, output the final JSON object
-        # If you have actual metrics, insert them here. Otherwise, omit or use dummy values.
         created_at = datetime.utcnow().isoformat() + "Z"
         final_obj = {
             "model": model_name,
@@ -243,77 +268,16 @@ def generate_ollama_response(response):
                 "content": ""
             },
             "done": True,
-            "done_reason": "stop",
-            # You can omit the durations if you don't have them:
-            # "total_duration": 737571100,
-            # "load_duration": 42606400,
-            # "prompt_eval_count": 26,
-            # "prompt_eval_duration": 216262000,
-            # "eval_count": 8,
-            # "eval_duration": 476584000
+            "done_reason": "stop"
         }
 
-        # If we never yielded any chunks, you still need to provide a final object
         yield json.dumps(final_obj) + "\n"
 
     return Response(generate_chunks(), content_type="application/json")
 
-def handle_llama32_3b(data, headers, params):
-    """
-    Handles requests for the llama3.2:3b model.
-    Checks if the message is in English and processes accordingly.
-    If the message is in English, streams the Spanish translation back to the user.
-    """
-    # Extract the message content
-    messages = data.get("messages", [])
-    if not messages or not isinstance(messages, list):
-        return jsonify({"error": "Invalid message format"}), 400
-
-    user_message = messages[-1].get("content", "").strip()  # Get the last message content
-
-    # Call the LLM to check if the message is in English
-    if user_message == 'translato':
-        return english_translation(messages[-2].get("content","").strip(), True, headers, params)
-    else:
-        is_english = rate_spanish_attempt(user_message)
-
-    # Log the result of the language check
-    app.logger.debug(f"Message: '{user_message}', Is English: {is_english}")
-
-    if is_english:
-        app.logger.debug("Message is in English. Streaming Spanish translation.")
-        # Stream the Spanish translation
-        return spanish_translation(user_message, data.get("stream"), headers, params)
-
-    app.logger.debug("Message is not in English. Proceeding with original request.")
-
-    # Proceed with the original LLM call
-    target_url = f"{BASE_URL}/api/chat"
-    try:
-        response = requests.request(
-            method="POST",
-            url=target_url,
-            headers=headers,
-            json=data,
-            params=params,
-            stream=data.get("stream")
-        )
-
-        # Handle streaming response
-        def generate():
-            for chunk in response.iter_content(chunk_size=1024):
-                if chunk:
-                    yield chunk
-
-        return Response(generate(), status=response.status_code, headers=dict(response.headers))
-
-    except requests.exceptions.RequestException as e:
-        app.logger.error(f"Error in handle_llama32_3b: {e}")
-        return jsonify({"error": str(e)}), 500
-
 
 @app.route('/translate_to_english', methods=['POST'])
-def translate_to_english():
+def translate_to_english_endpoint():
     data = request.get_json()
     message = data.get("message", "")
     # Translate to English
