@@ -4,8 +4,8 @@ REM build_image.bat - A script to build the Docker image for my-python-app
 REM Define variables
 SET IMAGE_NAME=translator
 SET TAG=latest
-SET DOCKERFILE_PATH=..
-SET CONTEXT_PATH=..
+SET DOCKERFILE_PATH=../..
+SET CONTEXT_PATH=../..
 
 REM Optional: Allow custom tag via command-line argument
 IF NOT "%1"=="" (

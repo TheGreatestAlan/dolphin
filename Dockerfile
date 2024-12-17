@@ -7,21 +7,18 @@ WORKDIR /app
 # Install system dependencies, including vim
 RUN apt-get update && apt-get install -y vim && apt-get clean
 
-# Copy requirements first to leverage Docker's caching
-COPY requirements.txt ./
+COPY ./translator /app/translator
 
 # Upgrade pip and install the Python dependencies
 RUN pip install --upgrade pip
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -r translator/requirements.txt
 
-# Copy the rest of your code into the working directory
-COPY . .
 
 # Expose the port your app runs on (optional if you're doing a web app)
 EXPOSE 8080
 
 # Set environment variables as needed (optional)
-# ENV MY_ENV_VAR=value
+ ENV PYTHONPATH=/app
 
 # Run your application
-CMD ["python", "translator_fireworks_rest_app.py"]
+CMD ["python", "-m", "translator.translator_fireworks_rest_app"]

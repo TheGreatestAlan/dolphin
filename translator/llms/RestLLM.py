@@ -1,6 +1,6 @@
 import requests
 import json
-from agent_server.llms.LLMInterface import LLMInterface
+from translator.llms.LLMInterface import LLMInterface
 
 class RestLLM(LLMInterface):
     def __init__(self, base_url):

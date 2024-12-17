@@ -1,7 +1,7 @@
 from openai import OpenAI
 
-from agent_server.llms.LLMInterface import LLMInterface
-from agent_server.llms.MethodNotSupportedException import MethodNotSupportedException
+from translator.llms.LLMInterface import LLMInterface
+from translator.llms.MethodNotSupportedException import MethodNotSupportedException
 
 
 class OptiLLM(LLMInterface):

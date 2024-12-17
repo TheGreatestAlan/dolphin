@@ -1,6 +1,6 @@
 import json
 import requests
-from agent_server.llms.LLMInterface import LLMInterface
+from translator.llms.LLMInterface import LLMInterface
 
 
 class LlamaCppRestLLM(LLMInterface):
