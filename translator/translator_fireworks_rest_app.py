@@ -1,4 +1,5 @@
 import json
+import os
 from datetime import datetime
 
 from flask import Flask, request, Response, jsonify
@@ -36,8 +37,8 @@ INSTRUCTIONS = {
 
 @app.route('/<path:endpoint>', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def proxy_request(endpoint):
-    if endpoint == "api/tags":
-        return jsonify(
+    if endpoint == "api/models" or "api/tags":
+        res = jsonify(
             {
                 "models": [
                     {
@@ -59,6 +60,7 @@ def proxy_request(endpoint):
                 ]
             }
         ), 200
+        return res
     endpoint_mapping = {
         "api/chat": "/inference/v1/api/chat",
         "chat/completions": "/inference/v1/chat/completions",
@@ -90,6 +92,10 @@ def proxy_request(endpoint):
     except requests.exceptions.RequestException as e:
         app.logger.error(f"Error proxying request to {target_url}: {e}")
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/version', methods=['GET'])
+def get_version():
+    return jsonify({"version": "0.3.14"}), 200
 
 
 @app.route('/api/chat', methods=['POST'])
@@ -248,4 +254,5 @@ def health():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, use_reloader=False, host='0.0.0.0', port=5000)
+    port = int(os.environ.get('REST_PORT', 8080))
+    app.run(debug=True, use_reloader=False, host='0.0.0.0', port=port)

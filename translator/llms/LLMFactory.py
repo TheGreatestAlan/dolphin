@@ -62,7 +62,6 @@ class LLMFactory:
 
         elif model_type == ModelType.FIREWORKS_LLAMA_3_70B:
             api_key = LLMFactory.get_api_key_or_env(key_store,"FIREWORKS_API_KEY")
-            print(api_key)
             return FireworksAiRestLLM(api_token=api_key, model='accounts/fireworks/models/llama-v3p3-70b-instruct')
 
         elif model_type == ModelType.FIREWORKS_QWEN_CODER_32B:
