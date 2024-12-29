@@ -15,7 +15,7 @@ API_KEY = key_store.get_api_key("FIREWORKS_API_KEY")
 BASE_URL = "https://api.fireworks.ai"
 MODEL_TYPE = ModelType.FIREWORKS_LLAMA_3_70B
 SUPPORTED_LANGUAGES = ["German", "French", "Italian", "Portuguese", "Hindi", "Spanish", "Thai"]
-rating_threshold = 7
+rating_threshold = 6
 
 # Keep instructions in English and just refer to the target language in the prompt.
 INSTRUCTIONS = {
@@ -30,10 +30,15 @@ INSTRUCTIONS = {
     ),
     "rating_system_message": (
         "You are a language evaluator. Evaluate the correctness of the following {target_language} sentence "
+        "Do not take into account diacritical marks or incorrect leading punctuation."
         "from 1 to 10, where 1 is completely incorrect and 10 is completely correct. "
         "Do not provide any explanation—only the integer."
     )
 }
+
+@app.route('/api/version', methods=['GET'])
+def get_version():
+    return jsonify({"version": "0.3.14"}), 200
 
 @app.route('/<path:endpoint>', methods=['GET', 'POST', 'PUT', 'DELETE'])
 def proxy_request(endpoint):
@@ -93,9 +98,6 @@ def proxy_request(endpoint):
         app.logger.error(f"Error proxying request to {target_url}: {e}")
         return jsonify({"error": str(e)}), 500
 
-@app.route('/api/version', methods=['GET'])
-def get_version():
-    return jsonify({"version": "0.3.14"}), 200
 
 
 @app.route('/api/chat', methods=['POST'])
@@ -123,7 +125,7 @@ def handle_chat():
     if language_attempt_rating <= rating_threshold:
         return translate_to_target_language(user_message, True, target_language, model_name)
     else:
-        return converse_in_target_language(user_message, target_language, model_name)
+        return converse_in_target_language(messages, target_language, model_name)
 
 
 def extract_language_from_model_name(model_name: str) -> str:
@@ -135,11 +137,25 @@ def extract_language_from_model_name(model_name: str) -> str:
             return language_code.capitalize()
     return "English"  # Default language
 
-def converse_in_target_language(user_message: str, target_language: str, model_name: str):
-    system_message = INSTRUCTIONS["persona_system_message"].format(target_language=target_language)
+
+def converse_in_target_language(messages: list, target_language: str, model_name: str):
+    # Extract the latest user message
+    latest_message = None
+    for message in reversed(messages):
+        if message["role"] == "user":
+            latest_message = message["content"]
+            break
+
+    if not latest_message:
+        raise ValueError("No user message found in the messages list.")
+
+    # System message tailored for the target language
+    system_message = f"You are a knowledgeable and charming assistant who always responds in {target_language}. Provide helpful, concise responses."
+
+    # Generate response (this assumes you have an LLM factory or interface similar to earlier examples)
     response = LLMFactory.get_singleton(MODEL_TYPE).stream_response(
-        prompt=user_message,
-        system_message=system_message
+        latest_message,
+        system_message
     )
     return generate_ollama_response(response, model_name)
 
@@ -202,6 +218,20 @@ def generate_ollama_response(response, model_name):
         for chunk in response:
             if "[DONE]" in chunk:
                 chunk = chunk.replace("[DONE]", "")
+                created_at = datetime.utcnow().isoformat() + "Z"
+                final_obj = {
+                    "model": model_name,
+                    "created_at": created_at,
+                    "message": {
+                        "role": "assistant",
+                        "content": chunk
+                    },
+                    "done": True,
+                    "done_reason": "stop"
+                }
+                final_object = json.dumps(final_obj) + "\n"
+                yield final_object
+                break
             if chunk:
                 created_at = datetime.utcnow().isoformat() + "Z"
                 yield_obj = json.dumps({
@@ -214,19 +244,6 @@ def generate_ollama_response(response, model_name):
                     "done": False
                 }) + "\n"
                 yield yield_obj
-
-        created_at = datetime.utcnow().isoformat() + "Z"
-        final_obj = {
-            "model": model_name,
-            "created_at": created_at,
-            "message": {
-                "role": "assistant",
-                "content": ""
-            },
-            "done": True,
-            "done_reason": "stop"
-        }
-        yield json.dumps(final_obj) + "\n"
 
     return Response(generate_chunks(), content_type="application/json")
 

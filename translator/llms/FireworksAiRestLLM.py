@@ -1,47 +1,29 @@
 import json
+import sys
 
 import requests
 
 from translator.llms.EncryptedKeyStore import EncryptedKeyStore
 from translator.llms.LLMInterface import LLMInterface
+from translator.llms.OpenAiStyleLLM import OpenAIStyleLLM
 
 
 class FireworksAiRestLLM(LLMInterface):
     def __init__(self, api_token, model="accounts/fireworks/models/llama-v3p1-8b-instruct"):
-        self.api_token = api_token
         self.model = model
         self.url = "https://api.fireworks.ai/inference/v1/chat/completions"
+        self.api = OpenAIStyleLLM(
+            api_token=api_token,
+            model=model,
+            url=self.url
+        )
         self.headers = {
-            "Authorization": f"Bearer {self.api_token}",
+            "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json"
         }
 
-    def generate_response(self, prompt, system_message):
-#        print('SYSTEM_MESSAGE:::\n' +  system_message)
-#        print('PROMPT_MESSAGE:::\n' +  prompt)
-        payload = {
-            "model": self.model,
-            "messages": [
-                {"role": "system", "content": system_message},
-                {"role": "user", "content": prompt}
-            ],
-            "max_tokens": 500,
-            "temperature": 0.7,
-            "top_p": 0.9,
-            "frequency_penalty": 0,
-            "presence_penalty": 0,
-            "stream": False
-        }
-
-        response = requests.post(self.url, json=payload, headers=self.headers)
-        if response.status_code == 200:
-            data = response.json()
-            res = data["choices"][0]["message"]["content"]
-#            print(res)
-            return res
-        else:
-            raise Exception(f"Request failed: {response.status_code}, {response.text}")
-
+    def generate_response(self, prompt, system_message, message_history=None):
+        return self.api.generate_response(prompt, system_message, message_history)
 
     def stream_response(self, prompt, system_message):
         payload = {
@@ -75,8 +57,8 @@ class FireworksAiRestLLM(LLMInterface):
                                     yield content
             else:
                 raise Exception(f"Request failed: {response.status_code}, {response.text}")
-
-import sys
+    def stream_response(self, prompt, system_message, message_history=None):
+        return self.api.stream_response(prompt, system_message, message_history)
 
 def main():
     keystore = EncryptedKeyStore()
@@ -96,7 +78,6 @@ def main():
         print("\n")  # Ensure a newline at the end of the response
     except Exception as e:
         print(f"\nError: {e}")
-
 
 if __name__ == "__main__":
     main()
