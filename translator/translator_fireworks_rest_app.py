@@ -88,7 +88,6 @@ def proxy_request(endpoint):
         # Determine model and language
         # If no model_name is provided, default to one
         model_name = data.get("model_name", "llama3.2:3b_italian")
-        target_language = extract_language_from_model_name(model_name)
 
         last_message = messages[-1].get("content", "") if isinstance(messages[-1], dict) else ""
         response = LLMFactory.get_singleton(MODEL_TYPE).stream_response(last_message, "None")
@@ -155,7 +154,8 @@ def converse_in_target_language(messages: list, target_language: str, model_name
     # Generate response (this assumes you have an LLM factory or interface similar to earlier examples)
     response = LLMFactory.get_singleton(MODEL_TYPE).stream_response(
         latest_message,
-        system_message
+        system_message,
+        messages
     )
     return generate_ollama_response(response, model_name)
 
