@@ -13,8 +13,17 @@ app = Flask(__name__)
 key_store = EncryptedKeyStore('keys.json.enc')
 API_KEY = key_store.get_api_key("FIREWORKS_API_KEY")
 BASE_URL = "https://api.fireworks.ai"
-MODEL_TYPE = ModelType.FIREWORKS_LLAMA_3_70B
-SUPPORTED_LANGUAGES = ["German", "French", "Italian", "Portuguese", "Hindi", "Spanish", "Thai"]
+LLAMA_MODEL = ModelType.FIREWORKS_LLAMA_3_70B
+QWEN_MODEL = ModelType.FIREWORKS_LLAMA_3_70B
+# Languages supported by QWEN
+QWEN_LANGUAGES = {"Chinese", "English", "French", "Spanish", "Portuguese",
+                  "German", "Italian", "Russian", "Japanese", "Korean",
+                  "Vietnamese", "Thai", "Arabic"}
+
+LLAMA_LANGUAGES = {"German", "French", "Italian", "Portuguese", "Hindi", "Spanish", "Thai"}
+
+SUPPORTED_LANGUAGES = QWEN_LANGUAGES | LLAMA_LANGUAGES
+
 rating_threshold = 6
 
 # Keep instructions in English and just refer to the target language in the prompt.
@@ -78,7 +87,6 @@ def proxy_request(endpoint):
     headers = {key: value for key, value in request.headers if key.lower() != 'host'}
     headers['Authorization'] = f"Bearer {API_KEY}"
     data = request.get_json() if request.is_json else request.data
-    params = request.args
 
     try:
         messages = data.get("messages", [])
@@ -88,9 +96,11 @@ def proxy_request(endpoint):
         # Determine model and language
         # If no model_name is provided, default to one
         model_name = data.get("model_name", "llama3.2:3b_italian")
+        language = extract_language_from_model_name(model_name)
+        model = get_model(language)
 
         last_message = messages[-1].get("content", "") if isinstance(messages[-1], dict) else ""
-        response = LLMFactory.get_singleton(MODEL_TYPE).stream_response(last_message, "None")
+        response = LLMFactory.get_singleton(model).stream_response(last_message, "None")
         return generate_ollama_response(response, model_name)
 
     except requests.exceptions.RequestException as e:
@@ -128,13 +138,12 @@ def handle_chat():
 
 
 def extract_language_from_model_name(model_name: str) -> str:
-    # Extract language from model name (e.g., "llama3.2:3b_italian" -> "Italian")
     if "_" in model_name:
         language_code = model_name.split("_")[-1].capitalize()
         supported_languages = SUPPORTED_LANGUAGES
         if language_code.lower() in [lang.lower() for lang in supported_languages]:
             return language_code.capitalize()
-    return "English"  # Default language
+    return "English"
 
 
 def converse_in_target_language(messages: list, target_language: str, model_name: str):
@@ -150,9 +159,10 @@ def converse_in_target_language(messages: list, target_language: str, model_name
 
     # System message tailored for the target language
     system_message = f"You are a knowledgeable and charming assistant who always responds in {target_language}. Provide helpful, concise responses."
+    model = get_model(target_language)
 
     # Generate response (this assumes you have an LLM factory or interface similar to earlier examples)
-    response = LLMFactory.get_singleton(MODEL_TYPE).stream_response(
+    response = LLMFactory.get_singleton(model).stream_response(
         latest_message,
         system_message,
         messages
@@ -171,7 +181,9 @@ def rate_language_attempt(message: str, target_language: str) -> int:
     system_message = INSTRUCTIONS["rating_system_message"].format(target_language=target_language)
     prompt = f"Rate the following {target_language} sentence correctness from 1 to 10:\n\n{message}"
 
-    rating_response = LLMFactory.get_singleton(MODEL_TYPE).generate_response(
+    model = get_model(target_language)
+
+    rating_response = LLMFactory.get_singleton(model).generate_response(
         prompt=prompt,
         system_message=system_message
     )
@@ -183,35 +195,47 @@ def rate_language_attempt(message: str, target_language: str) -> int:
 
     return max(1, min(rating, 10))
 
+def get_model(target_language: str):
+    normalized_language = target_language.strip().lower()  # Normalize the input
+    normalized_llama_languages = {lang.strip().lower() for lang in LLAMA_LANGUAGES}
+    normalized_qwen_languages = {lang.strip().lower() for lang in QWEN_LANGUAGES}
+
+    if normalized_language in normalized_llama_languages:
+        return LLAMA_MODEL
+    elif normalized_language in normalized_qwen_languages:
+        return QWEN_MODEL
+    else:
+        raise ValueError(f"Unsupported language: {target_language}")
 
 def english_translation(message: str, stream: bool, model_name: str):
     system_message = "You are a concise and direct English translator. You will not be yappy."
     prompt = f"Translate the following text to English:\n\n{message}"
+    language = extract_language_from_model_name(model_name)
+    model = get_model(language)
 
-    response = LLMFactory.get_singleton(MODEL_TYPE).stream_response(
+    response = LLMFactory.get_singleton(model).stream_response(
         prompt=prompt,
         system_message=system_message
     )
     return generate_ollama_response(response, model_name)
 
-
 def translate_to_target_language(message: str, stream: bool, target_language: str, model_name: str):
     system_message = INSTRUCTIONS["translation_system_message"].format(target_language=target_language)
     prompt = f"Translate the following text to {target_language}:\n\n{message}"
+    model = get_model(target_language)
 
     if stream:
-        response = LLMFactory.get_singleton(MODEL_TYPE).stream_response(
+        response = LLMFactory.get_singleton(model).stream_response(
             prompt=prompt,
             system_message=system_message
         )
         return generate_ollama_response(response, model_name)
     else:
-        completion = LLMFactory.get_singleton(MODEL_TYPE).generate_response(
+        completion = LLMFactory.get_singleton(model).generate_response(
             prompt=prompt,
             system_message=system_message
         )
         return jsonify({"translation": completion})
-
 
 def generate_ollama_response(response, model_name):
     def generate_chunks():
@@ -257,8 +281,10 @@ def translate_to_english_endpoint():
         {'role': 'system', 'content': "You are a concise and direct English translator."},
         {'role': 'user', 'content': f"Translate the following text to English:\n\n{message}"}
     ]
+    language = extract_language_from_model_name(model_name)
+    model = get_model(language)
 
-    response = LLMFactory.get_singleton(MODEL_TYPE).stream_response(
+    response = LLMFactory.get_singleton(model).stream_response(
         last_message="",
         conversation=translation_prompt
     )
