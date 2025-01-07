@@ -8,6 +8,11 @@ import requests
 from translator.llms.EncryptedKeyStore import EncryptedKeyStore
 from translator.llms.LLMFactory import LLMFactory, ModelType
 
+# HEMMINGWAY BRIDGE
+# You'll probably want to implement the starting language
+# so that people can learn from any language
+# to any language
+
 app = Flask(__name__)
 
 key_store = EncryptedKeyStore('keys.json.enc')
@@ -27,24 +32,20 @@ SUPPORTED_LANGUAGES = QWEN_LANGUAGES | LLAMA_LANGUAGES
 rating_threshold = 6
 
 # Keep instructions in English and just refer to the target language in the prompt.
-INSTRUCTIONS = {
-    "persona_system_message": (
-        "You are a knowledgeable and charming conversation partner who always responds in clear, "
-        "appealing {target_language}. Provide useful information and interesting conversation. "
-        "Keep responses to no more than a paragraph or two at a time."
-    ),
-    "translation_system_message": (
-        "You are a concise and direct translator who translates to {target_language}. If the message is incorrect, "
-        "provide the corrected message and, if necessary, a brief explanation."
-    ),
-    "rating_system_message": (
-        "You are a language evaluator. Evaluate the correctness of the following {target_language} sentence "
-        "Do not take into account diacritical marks or incorrect leading punctuation."
-        "from 1 to 10, where 1 is completely incorrect and 10 is completely correct. "
-        "for example, if the sentence is not in {target_language} you would rank that a 1"
-        "Do not provide any explanation—only the integer."
-    )
-}
+INSTRUCTIONS = dict(persona_system_message=(
+    "You are a knowledgeable and charming conversation partner who always responds in clear, "
+    "appealing {target_language}. Provide useful information and interesting conversation. "
+    "Keep responses to no more than a paragraph or two at a time.  You want to encourage a back and forth."
+), translation_system_message=(
+    "You are a concise and direct translator who translates to {target_language}. If the message is incorrect, "
+    "provide the corrected message and, if necessary, a brief explanation in {starting_language}"
+), rating_system_message=(
+    "You are a numerical sentence evaluator for the application of language learning. Evaluate the correctness of "
+    "the following candidate {target_language} sentence from 1 to 10, where 1 is completely incorrect and 10 is "
+    "completely correct.  Do not take punish the score for incorrect diacritical marks or incorrect leading punctuation."
+    "Do not provide any explanation—only the integer."
+))
+
 
 @app.route('/api/version', methods=['GET'])
 def get_version():
@@ -109,7 +110,6 @@ def proxy_request(endpoint):
         return jsonify({"error": str(e)}), 500
 
 
-
 @app.route('/api/chat', methods=['POST'])
 def handle_chat():
     data = request.get_json()
@@ -158,8 +158,7 @@ def converse_in_target_language(messages: list, target_language: str, model_name
     if not latest_message:
         raise ValueError("No user message found in the messages list.")
 
-    # System message tailored for the target language
-    system_message = f"You are a knowledgeable and charming assistant who always responds in {target_language}. Provide helpful, concise responses."
+    system_message = INSTRUCTIONS["persona_system_message"]
     model = get_model(target_language)
 
     # Generate response (this assumes you have an LLM factory or interface similar to earlier examples)
@@ -221,8 +220,11 @@ def english_translation(message: str, stream: bool, model_name: str):
     )
     return generate_ollama_response(response, model_name)
 
-def translate_to_target_language(message: str, stream: bool, target_language: str, model_name: str):
-    system_message = INSTRUCTIONS["translation_system_message"].format(target_language=target_language)
+
+def translate_to_target_language(message: str, stream: bool, target_language: str, model_name: str,
+                                 starting_language="English"):
+    system_message = INSTRUCTIONS["translation_system_message"].format(target_language=target_language,
+                                                                       starting_language=starting_language)
     prompt = f"Translate the following text to {target_language}:\n\n{message}"
     model = get_model(target_language)
 
@@ -238,6 +240,7 @@ def translate_to_target_language(message: str, stream: bool, target_language: st
             system_message=system_message
         )
         return jsonify({"translation": completion})
+
 
 def generate_ollama_response(response, model_name):
     def generate_chunks():
