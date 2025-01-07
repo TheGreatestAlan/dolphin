@@ -14,7 +14,7 @@ key_store = EncryptedKeyStore('keys.json.enc')
 API_KEY = key_store.get_api_key("FIREWORKS_API_KEY")
 BASE_URL = "https://api.fireworks.ai"
 LLAMA_MODEL = ModelType.FIREWORKS_LLAMA_3_70B
-QWEN_MODEL = ModelType.FIREWORKS_LLAMA_3_70B
+QWEN_MODEL = ModelType.FIREWORKS_QWEN_72B
 # Languages supported by QWEN
 QWEN_LANGUAGES = {"Chinese", "English", "French", "Spanish", "Portuguese",
                   "German", "Italian", "Russian", "Japanese", "Korean",
@@ -35,12 +35,13 @@ INSTRUCTIONS = {
     ),
     "translation_system_message": (
         "You are a concise and direct translator who translates to {target_language}. If the message is incorrect, "
-        "provide the corrected message and, if necessary, a brief explanation. Ignore diacritical marks."
+        "provide the corrected message and, if necessary, a brief explanation."
     ),
     "rating_system_message": (
         "You are a language evaluator. Evaluate the correctness of the following {target_language} sentence "
         "Do not take into account diacritical marks or incorrect leading punctuation."
         "from 1 to 10, where 1 is completely incorrect and 10 is completely correct. "
+        "for example, if the sentence is not in {target_language} you would rank that a 1"
         "Do not provide any explanation—only the integer."
     )
 }
@@ -190,6 +191,7 @@ def rate_language_attempt(message: str, target_language: str) -> int:
 
     try:
         rating = int(rating_response.strip())
+        print(rating)
     except ValueError:
         rating = 1
 
